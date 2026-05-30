@@ -1,4 +1,5 @@
 // Multi-provider AI integration: Anthropic, Groq, OpenRouter
+import { SOURCE_PRIORITY } from './schema.js'
 
 const ENDPOINTS = {
   anthropic: 'https://api.anthropic.com/v1/messages',
@@ -210,7 +211,11 @@ export async function runAnalysis({ apiKey, provider = 'anthropic', model = 'cla
 
   const systemPrompt = `You are a senior health data analyst. You are analysing a structured health-data extraction (Data Pack), not raw files.
 
+SOURCE PRIORITY RULES:
+${Object.entries(SOURCE_PRIORITY).map(([metric, sources]) => `- ${metric}: ${sources.join(' > ')}`).join('\n')}
+
 IMPORTANT RULES:
+- Use the SOURCE PRIORITY RULES above to decide which data to trust if multiple sources provide the same metric.
 - Do not invent data. If the Data Pack says a metric has 0 rows, it is empty.
 - Do not say a metric is missing if the Data Pack shows rows exist.
 - Every major claim must reference the extracted metric, date range, row count, or quality warning.

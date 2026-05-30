@@ -5,6 +5,9 @@ import AnalysisView from './components/AnalysisView.jsx'
 import ChatPanel from './components/ChatPanel.jsx'
 import ProviderSelector from './components/ProviderSelector.jsx'
 import Header from './components/Header.jsx'
+import DailyCheckIn from './components/DailyCheckIn.jsx'
+import SourceManager from './components/SourceManager.jsx'
+import Dashboard from './components/Dashboard.jsx'
 import { parseFile } from './lib/fileParser.js'
 import { runAnalysis } from './lib/claudeApi.js'
 
@@ -33,6 +36,8 @@ export default function App() {
   const [error, setError] = useState('')
   const [chatHistory, setChatHistory] = useState([])
   const [showChat, setShowChat] = useState(false)
+  const [showCheckIn, setShowCheckIn] = useState(false)
+  const [activeTab, setActiveTab] = useState('upload') // upload, sources, checkin
 
   const handleConnect = useCallback((conn) => {
     setConnection(conn)
@@ -65,6 +70,24 @@ export default function App() {
     setFiles(prev => [...prev, ...newFiles])
     setParsedFiles(prev => [...prev, ...parsed])
     setParsing(false)
+    setStage(STAGES.ANALYSE)
+  }, [])
+
+  const handleCheckIn = useCallback((data) => {
+    const virtualFile = {
+      name: `Check-in ${data.date}`,
+      type: 'manual',
+      size: 0,
+      content: JSON.stringify(data),
+      summary: `DAILY CHECK-IN: ${data.date}\n` +
+        Object.entries(data)
+          .filter(([k]) => k !== 'type' && k !== 'date')
+          .map(([k, v]) => `  - ${k.replace(/_/g, ' ')}: ${v}`)
+          .join('\n')
+    }
+    setParsedFiles(prev => [...prev, virtualFile])
+    setFiles(prev => [...prev, { name: virtualFile.name, size: 0 }])
+    setActiveTab('upload')
     setStage(STAGES.ANALYSE)
   }, [])
 
@@ -158,15 +181,48 @@ export default function App() {
         {/* Upload + mode select */}
         {(stage === STAGES.UPLOAD || stage === STAGES.ANALYSE) && (
           <div className="animate-slide-up pt-8 space-y-6">
-            <UploadZone
-              files={files}
-              parsedFiles={parsedFiles}
-              parsing={parsing}
-              parseLog={parseLog}
-              onFiles={handleFiles}
-              onRemove={removeFile}
-            />
-            {parsedFiles.length > 0 && (
+            <div className="flex items-center justify-between border-b border-slate-border/50 pb-2">
+              <div className="flex gap-4">
+                {['upload', 'sources', 'checkin'].map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`text-xs font-mono uppercase tracking-widest pb-2 transition-all ${
+                      activeTab === tab 
+                        ? 'text-jade border-b-2 border-jade' 
+                        : 'text-slate-ui hover:text-white'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {activeTab === 'checkin' && (
+              <DailyCheckIn onSubmit={handleCheckIn} />
+            )}
+
+            {activeTab === 'sources' && (
+              <SourceManager parsedFiles={parsedFiles} />
+            )}
+
+            {activeTab === 'upload' && (
+              <div className="space-y-8">
+                {parsedFiles.length > 0 && <Dashboard parsedFiles={parsedFiles} />}
+                
+                <UploadZone
+                  files={files}
+                  parsedFiles={parsedFiles}
+                  parsing={parsing}
+                  parseLog={parseLog}
+                  onFiles={handleFiles}
+                  onRemove={removeFile}
+                />
+              </div>
+            )}
+            
+            {parsedFiles.length > 0 && activeTab === 'upload' && (
               <ModeSelector
                 selected={selectedModes}
                 onChange={setSelectedModes}

@@ -40,8 +40,16 @@ export async function parseFile(file, onProgress) {
       log(`Done — ${result.content.length.toLocaleString()} chars read`, 'success', 100)
 
     } else if (ext === 'pdf') {
-      result.content = await parsePDF(file, log)
-      result.summary = truncate(result.content, 10000)
+      log('Loading PDF library (pdfjs)...', 'info', 26)
+      const content = await parsePDF(file, log)
+      result.content = content
+      
+      if (content.toLowerCase().includes('pathology') || content.toLowerCase().includes('laboratory')) {
+        log('Detected Pathology/Lab report', 'info', 90)
+        result.summary = `LAB REPORT DETECTED\n${truncate(content, 5000)}`
+      } else {
+        result.summary = truncate(content, 10000)
+      }
 
     } else if (ext === 'zip') {
       result.content = await parseZIP(file, log)
@@ -49,11 +57,15 @@ export async function parseFile(file, onProgress) {
 
       // Handle specific ZIP types (Phase 3)
       if (file.name.toLowerCase().includes('withings')) {
-        log('Detected Withings ZIP export', 'info', 31)
-        // Withings logic would go here
+        log('Processing Withings export data...', 'info', 31)
+        result.summary = `WITHINGS EXPORT\n${result.content}`
       } else if (file.name.toLowerCase().includes('sleep-export')) {
-        log('Detected Sleep as Android ZIP export', 'info', 31)
-        // Sleep as Android logic would go here
+        log('Processing Sleep as Android data...', 'info', 31)
+        result.summary = `SLEEP AS ANDROID EXPORT\n${result.content}`
+      } else if (file.name.toLowerCase().includes('health_connect') || file.name.toLowerCase().includes('health connect')) {
+        log('Processing Health Connect ZIP...', 'info', 31)
+        // If the ZIP contains a .db, parseZIP might have already extracted text snippets, 
+        // but for Health Connect we usually want the .db directly.
       }
 
     } else if (ext === 'db') {
@@ -212,12 +224,24 @@ async function parseZIP(file, log) {
     let output = `ZIP FILE: ${file.name}\nContents:\n`
     output += fileList.map(f => `  ${f}`).join('\n') + '\n\n'
 
+    // Define priority files for specific exporters (Phase 3)
+    const priorityKeywords = ['sleep', 'weight', 'height', 'activity', 'hrv', 'heart_rate', 'bp', 'glucose']
+    
     let totalChars = 0
-    const maxChars = 15000
+    const maxChars = 20000 // Increased for rich ZIPs
     const readable = fileList.filter(f => {
       if (zip.files[f].dir) return false
       const ext = f.split('.').pop().toLowerCase()
       return ['csv', 'json', 'txt', 'md', 'xml'].includes(ext)
+    }).sort((a, b) => {
+      // Sort priority files to the top
+      const aLow = a.toLowerCase()
+      const bLow = b.toLowerCase()
+      const aPri = priorityKeywords.some(k => aLow.includes(k))
+      const bPri = priorityKeywords.some(k => bLow.includes(k))
+      if (aPri && !bPri) return -1
+      if (!aPri && bPri) return 1
+      return 0
     })
 
     log(`Found ${readable.length} readable text files inside ZIP`, 'info', 42)
@@ -232,7 +256,9 @@ async function parseZIP(file, log) {
       log(`[${i + 1}/${readable.length}] Reading ${filename.split('/').pop()}...`, 'info', pct)
       try {
         const content = await zip.files[filename].async('string')
-        const snippet = truncate(content, Math.min(3000, maxChars - totalChars))
+        const isPriority = priorityKeywords.some(k => filename.toLowerCase().includes(k))
+        const snippetLimit = isPriority ? 5000 : 2000
+        const snippet = truncate(content, Math.min(snippetLimit, maxChars - totalChars))
         output += `\n=== ${filename} ===\n${snippet}\n`
         totalChars += snippet.length
       } catch {
