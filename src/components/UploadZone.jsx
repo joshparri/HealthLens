@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef, useEffect, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { formatFileSize } from '../lib/fileParser.js'
 
@@ -24,6 +24,85 @@ const STATUS_ICON = {
   success: '✓',
   warn:    '⚠',
   error:   '✗',
+}
+
+
+function LogPanel({ parseLog }) {
+  const scrollRef = useRef(null)
+  const [userScrolled, setUserScrolled] = useState(false)
+  const isScrolledToBottom = useRef(true)
+
+  // Auto-scroll to bottom unless user has scrolled up
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    if (!userScrolled) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [parseLog, userScrolled])
+
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24
+    setUserScrolled(!atBottom)
+  }
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    setUserScrolled(false)
+  }
+
+  return (
+    <div className="relative">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="bg-ink rounded-xl border border-slate-border/50 p-3 space-y-1 h-52 overflow-y-auto font-mono text-xs"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        {parseLog.length === 0 && (
+          <span className="text-slate-ui/40">Waiting for output...</span>
+        )}
+        {parseLog.map((entry, i) => {
+          const isLast = i === parseLog.length - 1
+          return (
+            <div
+              key={i}
+              className={`flex items-start gap-2 leading-relaxed ${
+                isLast ? 'opacity-100' : 'opacity-45'
+              }`}
+            >
+              <span className="text-slate-ui/40 flex-shrink-0 w-8 text-right tabular-nums">
+                {entry.pct != null ? `${Math.round(entry.pct)}%` : ''}
+              </span>
+              <span className={`flex-shrink-0 ${STATUS_COLOR[entry.status] || 'text-slate-ui'}`}>
+                {STATUS_ICON[entry.status] || '·'}
+              </span>
+              <span className={`break-all ${STATUS_COLOR[entry.status] || 'text-slate-ui'}`}>
+                {entry.msg}
+              </span>
+              {isLast && entry.status === 'info' && (
+                <span className="text-jade animate-pulse flex-shrink-0">▌</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Scroll-to-bottom button — only when user has scrolled up */}
+      {userScrolled && (
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-2 right-2 bg-jade text-ink-DEFAULT text-[10px] font-mono font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1 hover:bg-jade-dark transition-colors"
+        >
+          ↓ latest
+        </button>
+      )}
+    </div>
+  )
 }
 
 export default function UploadZone({ files, parsedFiles, parsing, parseLog = [], onFiles, onRemove }) {
@@ -123,42 +202,7 @@ export default function UploadZone({ files, parsedFiles, parsing, parseLog = [],
             </div>
 
             {/* Log lines */}
-            <div className="bg-ink rounded-xl border border-slate-border/50 p-3 space-y-1 max-h-52 overflow-y-auto font-mono text-xs">
-              {parseLog.length === 0 && (
-                <span className="text-slate-ui/40">Waiting for output...</span>
-              )}
-              {parseLog.map((entry, i) => {
-                const isLast = i === parseLog.length - 1
-                return (
-                  <div
-                    key={i}
-                    className={`flex items-start gap-2 transition-opacity leading-relaxed ${
-                      isLast ? 'opacity-100' : 'opacity-45'
-                    }`}
-                  >
-                    {/* Percentage badge */}
-                    <span className="text-slate-ui/40 flex-shrink-0 w-8 text-right tabular-nums">
-                      {entry.pct != null ? `${Math.round(entry.pct)}%` : ''}
-                    </span>
-
-                    {/* Status icon */}
-                    <span className={`flex-shrink-0 ${STATUS_COLOR[entry.status] || 'text-slate-ui'}`}>
-                      {STATUS_ICON[entry.status] || '·'}
-                    </span>
-
-                    {/* Message */}
-                    <span className={`break-all ${STATUS_COLOR[entry.status] || 'text-slate-ui'}`}>
-                      {entry.msg}
-                    </span>
-
-                    {/* Blinking cursor on last info line */}
-                    {isLast && entry.status === 'info' && (
-                      <span className="text-jade animate-pulse flex-shrink-0">▌</span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <LogPanel parseLog={parseLog} />
 
           </div>
         ) : (
