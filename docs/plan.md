@@ -399,7 +399,7 @@ Phase 7 — safety/privacy:
 * Add local backup/export.
 
 - [x] Create a normalized health schema and storage layer (Phase 2)
-- [/] Build robust importers for Withings, Sleep as Android, and Welltory (Phase 3)
+- [x] Build robust importers for Withings, Sleep as Android, and Welltory (Phase 3)
 - [x] Implement source priority and deduplication rules (Phase 4)
 - [x] Enhance UI with Import History and Source Management (Phase 5)
 - [x] Add Daily Context Tags / Check-in form (Phase 1/2)
@@ -416,7 +416,24 @@ Deliverables:
 7. [x] Import UI with warnings and import history.
 8. [x] Dashboard showing real imported data.
 9. [x] README explaining how Josh can feed new data weekly.
-10. [ ] A backlog section for Fitbit API, Withings API and Android companion app.
+10. [x] A backlog section for Fitbit API, Withings API and Android companion app.
+
+## Backlog & Future Roadmap
+
+### **High Priority**
+- **Persistence Layer**: Move from in-memory state to `indexedDB` to keep health data across browser refreshes.
+- **Deduplication Engine**: Implement a background worker to merge overlapping records from different sources based on the priority rules in `schema.js`.
+- **Advanced PDF Parsing**: Implement more robust regex-based extraction for common pathology lab formats (e.g., Laverty, Sonic, etc.).
+
+### **Medium Priority**
+- **Fitbit Web API Integration**: Allow direct OAuth connection to Fitbit for real-time daily sync.
+- **Withings Web API Integration**: Direct connection for Sleep Mat and Scale data.
+- **Android Companion App**: Build a lightweight Kotlin/Java app to read Health Connect and push daily summaries to the HealthLens API.
+
+### **Low Priority**
+- **Spotify Correlation**: Automated extraction of listening data to correlate with stress/energy scores.
+- **Community Templates**: Allow users to share analysis "Lenses" or prompt templates.
+- **Local Backup**: One-click export of the normalized database to JSON/SQLite.
 
 Start by inspecting the repo and reporting:
 

@@ -215,6 +215,7 @@ SOURCE PRIORITY RULES:
 ${Object.entries(SOURCE_PRIORITY).map(([metric, sources]) => `- ${metric}: ${sources.join(' > ')}`).join('\n')}
 
 IMPORTANT RULES:
+- Use Australia/Sydney timezone for date interpretation unless a file explicitly proves otherwise.
 - Use the SOURCE PRIORITY RULES above to decide which data to trust if multiple sources provide the same metric.
 - Do not invent data. If the Data Pack says a metric has 0 rows, it is empty.
 - Do not say a metric is missing if the Data Pack shows rows exist.
