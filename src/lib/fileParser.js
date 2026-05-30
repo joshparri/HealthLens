@@ -3,60 +3,61 @@
 export async function parseFile(file, onProgress) {
   const ext = file.name.split('.').pop().toLowerCase()
   const result = { name: file.name, type: ext, size: file.size, content: '', summary: '' }
-  const log = (msg, status = 'info') => onProgress?.({ file: file.name, msg, status })
 
-  log(`Starting — ${ext.toUpperCase()} file, ${formatFileSize(file.size)}`)
+  const log = (msg, status = 'info', pct = null) =>
+    onProgress?.({ file: file.name, msg, status, pct })
+
+  log(`Detected ${ext.toUpperCase()} · ${formatFileSize(file.size)}`, 'info', 0)
 
   try {
     if (ext === 'csv') {
-      log('Reading text content...')
-      result.content = await readText(file)
+      log('Reading file from disk...', 'info', 5)
+      result.content = await readTextWithProgress(file, (p) =>
+        log(`Reading file... ${p}%`, 'info', p * 0.6)
+      )
       const lines = result.content.trim().split('\n')
-      log(`Read ${lines.length - 1} rows, ${result.content.length.toLocaleString()} chars`)
-      log('Summarising CSV structure...')
+      log(`File read — ${lines.length - 1} rows, ${result.content.length.toLocaleString()} chars`, 'info', 65)
+      log('Parsing columns and structure...', 'info', 75)
       result.summary = summariseCSV(result.content, file.name)
-      log(`Done — ${lines.length - 1} data rows extracted`, 'success')
+      log(`Done — ${lines.length - 1} data rows extracted`, 'success', 100)
 
     } else if (ext === 'json') {
-      log('Reading JSON...')
-      const text = await readText(file)
-      result.content = text
-      log(`Read ${text.length.toLocaleString()} chars, parsing structure...`)
-      result.summary = summariseJSON(text, file.name)
-      log('Done — JSON parsed and summarised', 'success')
+      log('Reading file from disk...', 'info', 5)
+      result.content = await readTextWithProgress(file, (p) =>
+        log(`Reading file... ${p}%`, 'info', p * 0.6)
+      )
+      log(`File read — ${result.content.length.toLocaleString()} chars`, 'info', 65)
+      log('Parsing JSON structure...', 'info', 75)
+      result.summary = summariseJSON(result.content, file.name)
+      log('Done — JSON parsed and summarised', 'success', 100)
 
     } else if (ext === 'txt' || ext === 'md') {
-      log('Reading plain text...')
-      result.content = await readText(file)
+      log('Reading plain text...', 'info', 10)
+      result.content = await readTextWithProgress(file, (p) =>
+        log(`Reading file... ${p}%`, 'info', p * 0.9)
+      )
       result.summary = truncate(result.content, 8000)
-      log(`Done — ${result.content.length.toLocaleString()} chars read`, 'success')
+      log(`Done — ${result.content.length.toLocaleString()} chars read`, 'success', 100)
 
     } else if (ext === 'pdf') {
-      log('Loading PDF library (pdfjs)...')
       result.content = await parsePDF(file, log)
       result.summary = truncate(result.content, 10000)
-      log('Done — PDF text extraction complete', 'success')
 
     } else if (ext === 'zip') {
-      log('Loading ZIP library (jszip)...')
       result.content = await parseZIP(file, log)
       result.summary = truncate(result.content, 12000)
-      log('Done — ZIP contents extracted', 'success')
 
     } else if (ext === 'db') {
-      log('Loading SQLite engine (sql.js + WASM)...')
-      log('This may take 5–10 seconds on first load...')
       result.content = await parseSQLite(file, log)
       result.summary = truncate(result.content, 12000)
-      log('Done — SQLite database read', 'success')
 
     } else {
-      log(`Unsupported file type: ${ext}`, 'warn')
+      log(`Unsupported file type: ${ext}`, 'warn', 100)
       result.content = `[Binary or unsupported file: ${file.name}]`
       result.summary = result.content
     }
   } catch (err) {
-    log(`Failed: ${err.message}`, 'error')
+    log(`Failed: ${err.message}`, 'error', 100)
     result.content = `[Error parsing ${file.name}: ${err.message}]`
     result.summary = result.content
   }
@@ -64,19 +65,40 @@ export async function parseFile(file, onProgress) {
   return result
 }
 
-async function readText(file) {
+// Read text file and emit progress based on bytes loaded
+async function readTextWithProgress(file, onPct) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
+    reader.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onPct?.(Math.round((e.loaded / e.total) * 100))
+      }
+    }
     reader.onload = e => resolve(e.target.result)
     reader.onerror = () => reject(new Error('Failed to read file'))
     reader.readAsText(file)
   })
 }
 
+// Read as ArrayBuffer with progress
+async function readArrayBufferWithProgress(file, onPct) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onPct?.(Math.round((e.loaded / e.total) * 100))
+      }
+    }
+    reader.onload = e => resolve(e.target.result)
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
 function truncate(text, maxChars) {
   if (!text) return ''
   if (text.length <= maxChars) return text
-  return text.slice(0, maxChars) + `\n\n[...truncated — ${text.length - maxChars} chars omitted for brevity...]`
+  return text.slice(0, maxChars) + `\n\n[...truncated — ${text.length - maxChars} chars omitted...]`
 }
 
 function summariseCSV(text, filename) {
@@ -102,105 +124,179 @@ function summariseJSON(text, filename) {
 
 async function parsePDF(file, log) {
   try {
-    log('Importing pdfjs-dist...')
+    log('Loading pdfjs-dist library...', 'info', 2)
     const pdfjsLib = await import('pdfjs-dist')
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+    log('Library loaded', 'info', 8)
 
-    log('Loading PDF document...')
-    const arrayBuffer = await file.arrayBuffer()
+    log('Reading PDF file from disk...', 'info', 10)
+    const arrayBuffer = await readArrayBufferWithProgress(file, (p) =>
+      log(`Reading file... ${p}%`, 'info', 10 + p * 0.2)
+    )
+    log(`File read — ${formatFileSize(file.size)} loaded into memory`, 'info', 30)
+
+    log('Parsing PDF document structure...', 'info', 35)
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-    log(`PDF loaded — ${pdf.numPages} page${pdf.numPages !== 1 ? 's' : ''}`)
+    log(`Document parsed — ${pdf.numPages} page${pdf.numPages !== 1 ? 's' : ''} found`, 'info', 40)
 
     let fullText = `PDF FILE: ${file.name} (${pdf.numPages} pages)\n\n`
     const pagesToRead = Math.min(pdf.numPages, 30)
 
     for (let i = 1; i <= pagesToRead; i++) {
-      log(`Extracting page ${i} of ${pagesToRead}...`)
+      const pct = 40 + Math.round((i / pagesToRead) * 55)
+      log(`Extracting text — page ${i} of ${pagesToRead}...`, 'info', pct)
       const page = await pdf.getPage(i)
       const content = await page.getTextContent()
       const pageText = content.items.map(item => item.str).join(' ')
       fullText += `--- Page ${i} ---\n${pageText}\n\n`
     }
 
+    log(`Done — ${fullText.length.toLocaleString()} chars extracted from ${pagesToRead} pages`, 'success', 100)
     return fullText
   } catch (err) {
+    log(`PDF parse failed: ${err.message}`, 'error', 100)
     return `[PDF parse error for ${file.name}: ${err.message}]`
   }
 }
 
 async function parseZIP(file, log) {
   try {
-    log('Importing JSZip...')
+    log('Loading JSZip library...', 'info', 2)
     const JSZip = (await import('jszip')).default
-    log('Unzipping archive...')
-    const zip = await JSZip.loadAsync(file)
+    log('Library loaded', 'info', 5)
+
+    log('Reading ZIP file from disk...', 'info', 8)
+    const arrayBuffer = await readArrayBufferWithProgress(file, (p) =>
+      log(`Reading file... ${p}%`, 'info', 8 + p * 0.2)
+    )
+    log(`File read — ${formatFileSize(file.size)} in memory`, 'info', 28)
+
+    log('Decompressing ZIP archive...', 'info', 30)
+    const zip = await JSZip.loadAsync(arrayBuffer)
     const fileList = Object.keys(zip.files)
-    log(`Found ${fileList.length} entries in ZIP`)
+    const dirs = fileList.filter(f => zip.files[f].dir).length
+    const fileCount = fileList.length - dirs
+    log(`Archive opened — ${fileCount} files in ${dirs} folders`, 'info', 38)
 
     let output = `ZIP FILE: ${file.name}\nContents:\n`
     output += fileList.map(f => `  ${f}`).join('\n') + '\n\n'
 
     let totalChars = 0
     const maxChars = 15000
-    let readCount = 0
+    const readable = fileList.filter(f => {
+      if (zip.files[f].dir) return false
+      const ext = f.split('.').pop().toLowerCase()
+      return ['csv', 'json', 'txt', 'md', 'xml'].includes(ext)
+    })
 
-    for (const filename of fileList) {
-      if (totalChars >= maxChars) break
-      const zipEntry = zip.files[filename]
-      if (zipEntry.dir) continue
+    log(`Found ${readable.length} readable text files inside ZIP`, 'info', 42)
 
-      const ext = filename.split('.').pop().toLowerCase()
-      if (['csv', 'json', 'txt', 'md', 'xml'].includes(ext)) {
-        try {
-          log(`Reading ${filename}...`)
-          const content = await zipEntry.async('string')
-          const snippet = truncate(content, Math.min(3000, maxChars - totalChars))
-          output += `\n=== ${filename} ===\n${snippet}\n`
-          totalChars += snippet.length
-          readCount++
-        } catch {
-          log(`Could not read ${filename}`, 'warn')
-          output += `\n=== ${filename} === [could not read]\n`
-        }
+    for (let i = 0; i < readable.length; i++) {
+      if (totalChars >= maxChars) {
+        log(`Character limit reached — skipping remaining ${readable.length - i} files`, 'warn', 95)
+        break
+      }
+      const filename = readable[i]
+      const pct = 42 + Math.round((i / readable.length) * 52)
+      log(`[${i + 1}/${readable.length}] Reading ${filename.split('/').pop()}...`, 'info', pct)
+      try {
+        const content = await zip.files[filename].async('string')
+        const snippet = truncate(content, Math.min(3000, maxChars - totalChars))
+        output += `\n=== ${filename} ===\n${snippet}\n`
+        totalChars += snippet.length
+      } catch {
+        log(`Could not read ${filename}`, 'warn', pct)
+        output += `\n=== ${filename} === [could not read]\n`
       }
     }
 
-    log(`Extracted text from ${readCount} files inside ZIP`)
+    log(`Done — extracted ${totalChars.toLocaleString()} chars from ${readable.length} files`, 'success', 100)
     return output
   } catch (err) {
+    log(`ZIP parse failed: ${err.message}`, 'error', 100)
     return `[ZIP parse error for ${file.name}: ${err.message}]`
   }
 }
 
 async function parseSQLite(file, log) {
   try {
-    log('Importing sql.js...')
+    // ── Step 1: Read file into memory ──────────────────────────────────────
+    log('Step 1/4 — Reading file into browser memory...', 'info', 0)
+    const startRead = Date.now()
+    const arrayBuffer = await readArrayBufferWithProgress(file, (p) => {
+      const mb = ((file.size * p / 100) / 1024 / 1024).toFixed(1)
+      log(`Step 1/4 — Reading file: ${p}% (${mb} MB of ${formatFileSize(file.size)})`, 'info', p * 0.25)
+    })
+    const readMs = Date.now() - startRead
+    log(`Step 1/4 — File read complete in ${(readMs / 1000).toFixed(1)}s`, 'info', 25)
+
+    // ── Step 2: Load sql.js + WASM ─────────────────────────────────────────
+    log('Step 2/4 — Loading sql.js library...', 'info', 26)
     const SQL = (await import('sql.js')).default
-    log('Fetching WASM binary (may take a moment)...')
-    const sqlPromise = SQL({
+    log('Step 2/4 — sql.js imported, fetching WASM binary...', 'info', 30)
+
+    // WASM fetch has no progress events — simulate with a timer
+    let wasmPct = 30
+    const wasmTimer = setInterval(() => {
+      if (wasmPct < 44) {
+        wasmPct += 1
+        const kb = Math.round((wasmPct - 30) / 14 * 2800)
+        log(`Step 2/4 — Fetching WASM binary... (~${kb} KB of ~2800 KB)`, 'info', wasmPct)
+      }
+    }, 200)
+
+    const startWasm = Date.now()
+    const sql = await SQL({
       locateFile: () => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.wasm`
     })
+    clearInterval(wasmTimer)
+    const wasmMs = Date.now() - startWasm
+    log(`Step 2/4 — WASM loaded in ${(wasmMs / 1000).toFixed(1)}s`, 'info', 45)
 
-    const arrayBuffer = await file.arrayBuffer()
-    log('Opening SQLite database...')
-    const sql = await sqlPromise
+    // ── Step 3: Open database ──────────────────────────────────────────────
+    log('Step 3/4 — Opening SQLite database...', 'info', 46)
+    log(`Step 3/4 — Parsing ${formatFileSize(file.size)} database file...`, 'info', 47)
+
+    // Database open also has no progress — simulate based on file size
+    const expectedOpenMs = Math.max(2000, file.size / (1024 * 1024) * 800) // ~800ms per MB
+    let openPct = 47
+    const openTimer = setInterval(() => {
+      if (openPct < 64) {
+        openPct += 1
+        log(`Step 3/4 — Opening database... (${Math.round((openPct - 47) / 17 * 100)}% estimated)`, 'info', openPct)
+      }
+    }, expectedOpenMs / 17)
+
+    const startOpen = Date.now()
     const db = new sql.Database(new Uint8Array(arrayBuffer))
+    clearInterval(openTimer)
+    const openMs = Date.now() - startOpen
+    log(`Step 3/4 — Database opened in ${(openMs / 1000).toFixed(1)}s`, 'info', 65)
 
-    log('Reading table list...')
+    // ── Step 4: Read tables ────────────────────────────────────────────────
+    log("Step 4/4 — Querying table list...", 'info', 66)
     const tablesResult = db.exec("SELECT name FROM sqlite_master WHERE type='table'")
-    if (!tablesResult.length) return `SQLite DB: ${file.name}\nNo tables found.`
+    if (!tablesResult.length) {
+      log('No tables found in database', 'warn', 100)
+      db.close()
+      return `SQLite DB: ${file.name}\nNo tables found.`
+    }
 
     const tables = tablesResult[0].values.map(r => r[0])
-    log(`Found ${tables.length} table${tables.length !== 1 ? 's' : ''}: ${tables.slice(0, 5).join(', ')}${tables.length > 5 ? '...' : ''}`)
+    const toRead = tables.slice(0, 20)
+    log(`Step 4/4 — Found ${tables.length} tables: ${toRead.slice(0, 6).join(', ')}${tables.length > 6 ? ` +${tables.length - 6} more` : ''}`, 'info', 68)
 
     let output = `SQLITE DB: ${file.name}\nTables (${tables.length}): ${tables.join(', ')}\n\n`
 
-    for (const table of tables.slice(0, 20)) {
+    for (let i = 0; i < toRead.length; i++) {
+      const table = toRead[i]
+      const pct = 68 + Math.round((i / toRead.length) * 28)
+      log(`Step 4/4 — [${i + 1}/${toRead.length}] Reading table: ${table}`, 'info', pct)
+
       try {
-        log(`Reading table: ${table}...`)
         const countResult = db.exec(`SELECT COUNT(*) FROM "${table}"`)
         const count = countResult[0]?.values[0][0] ?? 0
-        output += `TABLE: ${table} — ${count} rows\n`
+        output += `TABLE: ${table} — ${count.toLocaleString()} rows\n`
 
         if (count > 0) {
           const sampleResult = db.exec(`SELECT * FROM "${table}" LIMIT 5`)
@@ -216,14 +312,16 @@ async function parseSQLite(file, log) {
         }
         output += '\n'
       } catch (e) {
-        log(`Error reading table ${table}: ${e.message}`, 'warn')
+        log(`Table ${table} error: ${e.message}`, 'warn', pct)
         output += `TABLE: ${table} — [error: ${e.message}]\n\n`
       }
     }
 
     db.close()
+    log(`Done — ${toRead.length} tables read, ${output.length.toLocaleString()} chars extracted`, 'success', 100)
     return truncate(output, 15000)
   } catch (err) {
+    log(`SQLite parse failed: ${err.message}`, 'error', 100)
     return `[SQLite parse error for ${file.name}: ${err.message}]`
   }
 }

@@ -12,14 +12,14 @@ const TYPE_COLORS = {
   zip: 'text-purple-400', db: 'text-blue-400', txt: 'text-slate-ui', md: 'text-slate-ui'
 }
 
-const STATUS_STYLES = {
+const STATUS_COLOR = {
   info:    'text-slate-ui',
   success: 'text-jade',
   warn:    'text-amber-health',
   error:   'text-crimson-health',
 }
 
-const STATUS_PREFIX = {
+const STATUS_ICON = {
   info:    '·',
   success: '✓',
   warn:    '⚠',
@@ -47,9 +47,21 @@ export default function UploadZone({ files, parsedFiles, parsing, parseLog = [],
     multiple: true,
   })
 
-  // Group log lines by file for display
-  const currentFile = parseLog.length > 0 ? parseLog[parseLog.length - 1]?.file : null
-  const lastStatus = parseLog.length > 0 ? parseLog[parseLog.length - 1]?.status : 'info'
+  // Current state from log
+  const lastEntry = parseLog[parseLog.length - 1]
+  const currentPct = lastEntry?.pct ?? 0
+  const currentStatus = lastEntry?.status ?? 'info'
+  const currentFile = lastEntry?.file ?? ''
+
+  // Is it done?
+  const isDone = currentStatus === 'success' || currentStatus === 'error'
+
+  // Bar colour
+  const barColor = currentStatus === 'error'
+    ? 'bg-crimson-health'
+    : currentStatus === 'warn'
+    ? 'bg-amber-health'
+    : 'bg-jade'
 
   return (
     <div className="space-y-4">
@@ -57,56 +69,97 @@ export default function UploadZone({ files, parsedFiles, parsing, parseLog = [],
         {...getRootProps()}
         className={`
           relative border-2 border-dashed rounded-2xl transition-all
-          ${parsing ? 'border-jade/40 bg-jade/3 cursor-default pointer-events-none' : ''}
-          ${!parsing && isDragActive ? 'border-jade bg-jade/5 drop-active p-10 text-center cursor-pointer' : ''}
-          ${!parsing && !isDragActive ? 'border-slate-border hover:border-jade/40 hover:bg-jade/2 p-10 text-center cursor-pointer' : ''}
+          ${parsing
+            ? 'border-jade/40 cursor-default pointer-events-none'
+            : isDragActive
+            ? 'border-jade bg-jade/5 p-10 text-center cursor-pointer'
+            : 'border-slate-border hover:border-jade/40 hover:bg-jade/2 p-10 text-center cursor-pointer'
+          }
         `}
       >
         <input {...getInputProps()} />
 
         {parsing ? (
-          <div className="p-4 space-y-3">
-            {/* Header */}
-            <div className="flex items-center gap-3 pb-2 border-b border-slate-border">
-              <div className="w-4 h-4 border-2 border-jade/30 border-t-jade rounded-full spinner flex-shrink-0"></div>
-              <span className="text-jade text-sm font-mono font-semibold">
-                Parsing {currentFile ? `· ${currentFile}` : 'files...'}
-              </span>
+          <div className="p-4 space-y-4">
+
+            {/* Header with file name + overall pct */}
+            <div className="flex items-center gap-3">
+              {!isDone && (
+                <div className="w-4 h-4 border-2 border-jade/30 border-t-jade rounded-full spinner flex-shrink-0" />
+              )}
+              {isDone && currentStatus === 'success' && (
+                <span className="text-jade text-base flex-shrink-0">✓</span>
+              )}
+              {isDone && currentStatus === 'error' && (
+                <span className="text-crimson-health text-base flex-shrink-0">✗</span>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-jade text-sm font-mono font-semibold truncate">
+                    {currentFile || 'Parsing...'}
+                  </span>
+                  <span className={`text-xs font-mono font-bold flex-shrink-0 ${STATUS_COLOR[currentStatus]}`}>
+                    {currentPct}%
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {/* Live log */}
-            <div className="space-y-0.5 max-h-48 overflow-y-auto font-mono text-xs">
+            {/* Overall progress bar */}
+            <div className="space-y-1">
+              <div className="w-full bg-ink rounded-full h-2 overflow-hidden">
+                <div
+                  className={`h-2 rounded-full transition-all duration-300 ${barColor}`}
+                  style={{ width: `${currentPct}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] font-mono text-slate-ui/50">
+                <span>0%</span>
+                <span>25%</span>
+                <span>50%</span>
+                <span>75%</span>
+                <span>100%</span>
+              </div>
+            </div>
+
+            {/* Log lines */}
+            <div className="bg-ink rounded-xl border border-slate-border/50 p-3 space-y-1 max-h-52 overflow-y-auto font-mono text-xs">
+              {parseLog.length === 0 && (
+                <span className="text-slate-ui/40">Waiting for output...</span>
+              )}
               {parseLog.map((entry, i) => {
                 const isLast = i === parseLog.length - 1
                 return (
                   <div
                     key={i}
-                    className={`flex items-start gap-2 transition-opacity ${
-                      isLast ? 'opacity-100' : 'opacity-50'
+                    className={`flex items-start gap-2 transition-opacity leading-relaxed ${
+                      isLast ? 'opacity-100' : 'opacity-45'
                     }`}
                   >
-                    {/* File label — only show when it changes */}
-                    {(i === 0 || parseLog[i - 1]?.file !== entry.file) && (
-                      <span className="text-slate-ui/60 shrink-0 truncate max-w-[120px]" title={entry.file}>
-                        {entry.file.length > 16 ? entry.file.slice(0, 14) + '…' : entry.file}
-                      </span>
-                    )}
-                    {(i > 0 && parseLog[i - 1]?.file === entry.file) && (
-                      <span className="text-slate-ui/20 shrink-0 w-[120px] max-w-[120px]">│</span>
-                    )}
-                    <span className={`shrink-0 ${STATUS_STYLES[entry.status] || 'text-slate-ui'}`}>
-                      {STATUS_PREFIX[entry.status] || '·'}
+                    {/* Percentage badge */}
+                    <span className="text-slate-ui/40 flex-shrink-0 w-8 text-right tabular-nums">
+                      {entry.pct != null ? `${Math.round(entry.pct)}%` : ''}
                     </span>
-                    <span className={`${STATUS_STYLES[entry.status] || 'text-slate-ui'} break-all`}>
+
+                    {/* Status icon */}
+                    <span className={`flex-shrink-0 ${STATUS_COLOR[entry.status] || 'text-slate-ui'}`}>
+                      {STATUS_ICON[entry.status] || '·'}
+                    </span>
+
+                    {/* Message */}
+                    <span className={`break-all ${STATUS_COLOR[entry.status] || 'text-slate-ui'}`}>
                       {entry.msg}
                     </span>
+
+                    {/* Blinking cursor on last info line */}
                     {isLast && entry.status === 'info' && (
-                      <span className="text-jade animate-pulse shrink-0">▌</span>
+                      <span className="text-jade animate-pulse flex-shrink-0">▌</span>
                     )}
                   </div>
                 )
               })}
             </div>
+
           </div>
         ) : (
           <div className="space-y-3">
@@ -153,7 +206,7 @@ export default function UploadZone({ files, parsedFiles, parsing, parseLog = [],
                     {ext.toUpperCase()} · {formatFileSize(file.size)}
                     {parsed && !failed && <span className="text-jade ml-2">✓ parsed</span>}
                     {parsed && failed && <span className="text-crimson-health ml-2">✗ parse error</span>}
-                    {!parsed && parsing && <span className="text-slate-ui ml-2">parsing...</span>}
+                    {!parsed && parsing && <span className="text-slate-ui ml-2">pending...</span>}
                   </p>
                 </div>
                 <button
