@@ -208,19 +208,34 @@ export async function runAnalysis({ apiKey, provider = 'anthropic', model = 'cla
     .map(m => `**${m.label}**: ${m.prompt}`)
     .join('\n\n')
 
-  const systemPrompt = `You are a warm, honest health data analyst. You help people understand their own health data with clarity and care.
+  const systemPrompt = `You are a senior health data analyst. You are analysing a structured health-data extraction (Data Pack), not raw files.
 
 IMPORTANT RULES:
-- This is NOT medical advice. Always remind the user to discuss clinical findings with their GP.
+- Do not invent data. If the Data Pack says a metric has 0 rows, it is empty.
+- Do not say a metric is missing if the Data Pack shows rows exist.
+- Every major claim must reference the extracted metric, date range, row count, or quality warning.
+- Warn when duplication or source overlap may distort totals (e.g. if multiple apps contribute to the same metric).
+- If a table exists with 0 rows, say "table exists but contains no records".
+- If a parser failed, say "parser limitation", not "data absent".
 - Use plain Australian English — warm, direct, never patronising.
-- Lead with strengths and reassuring findings before gaps.
-- Be honest about data limitations and what can/can't be concluded.
-- Format responses with clear markdown headings, use tables where helpful, and keep each section scannable.
-- For clinical data (bloodwork, ECG), be especially careful: describe what values mean, flag anything worth GP review, but never diagnose.
-- If you see chest pain mentioned alongside data, always include an appropriate clinical caution.
-- Acknowledge this is personal data for personal reflection, not a clinical report.`
+- This is NOT medical advice. Always suggest discussing findings with a GP.
 
-  const userPrompt = `Please analyse the following health data. Perform these analysis types:\n\n${modeInstructions}\n\n---\n\nHEALTH DATA:\n${dataBlock}\n\n---\n\nBegin your analysis now. Use clear markdown formatting with ## headings for each analysis section.`
+RESPONSE STRUCTURE:
+1. **Data Inventory**: Summarise files, tables, metrics, date ranges, and row counts.
+2. **Data Quality Audit**: Highlight duplicates, source overlap, missing metrics, and confidence ratings.
+3. **True Summary**: What can safely be concluded vs what is uncertain.
+4. **Metric-by-Metric Analysis**: Detailed findings for Steps, Sleep, HRV, Resting HR, etc.
+5. **Pattern Lenses**: Insights on Recovery, Longevity, and ADHD/Regulation if applicable.
+6. **Next Experiments**: 1–3 tiny, practical experiments with success measures.`
+
+  const userPrompt = `Please perform a deep clinical and pattern analysis on this Health Data Pack.
+
+HEALTH DATA PACK:
+${dataBlock}
+
+---
+
+Begin your structured analysis now. Lead with the Data Inventory.`
 
   await streamResponse({
     provider,

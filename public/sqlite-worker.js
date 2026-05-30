@@ -1,6 +1,6 @@
 // SQLite Web Worker — runs sql.js off the main thread
-// Receives: { type: 'parse', buffer: ArrayBuffer, fileName: string, fileSize: number }
-// Posts:    { type: 'progress', msg, status, pct }
+// Receives: { buffer: ArrayBuffer, fileName: string, fileSize: number }
+// Posts:    { type: 'progress', msg, status, pct, id }
 //           { type: 'done', content }
 //           { type: 'error', message }
 
@@ -8,11 +8,6 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
-
-function truncate(text, maxChars) {
-  if (!text || text.length <= maxChars) return text
-  return text.slice(0, maxChars) + '\n\n[...truncated — ' + (text.length - maxChars) + ' chars omitted...]'
 }
 
 function log(msg, status, pct, id) {
@@ -37,7 +32,6 @@ self.onmessage = async function(e) {
     }, 180)
 
     var startWasm = Date.now()
-
     importScripts('https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.js')
     var sql = await initSqlJs({
       locateFile: function() { return 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.wasm' }
@@ -45,120 +39,147 @@ self.onmessage = async function(e) {
 
     clearInterval(wasmTimer)
     var wasmMs = Date.now() - startWasm
-    log('Step 2/4 — WASM loaded in ' + (wasmMs / 1000).toFixed(1) + 's', 'info', 45)
+    log('Step 2/4 — WASM loaded in ' + (wasmMs / 1000).toFixed(1) + 's', 'info', 45, 'wasm-load')
 
     log('Step 3/4 — Opening SQLite database...', 'info', 46, 'db-open')
-    log('Step 3/4 — Parsing ' + formatFileSize(fileSize) + ' database file... (this may take a while)', 'info', 47, 'db-open')
-
-    var expectedOpenMs = Math.max(3000, fileSize / (1024 * 1024) * 900)
-    var openPct = 47
-    var openTimer = setInterval(function() {
-      if (openPct < 64) {
-        openPct += 1
-        var estPct = Math.round((openPct - 47) / 17 * 100)
-        log('Step 3/4 — Opening database... (~' + estPct + '% estimated)', 'info', openPct, 'db-open')
-      }
-    }, expectedOpenMs / 17)
-
     var startOpen = Date.now()
     var db = new sql.Database(new Uint8Array(buffer))
-    clearInterval(openTimer)
     var openMs = Date.now() - startOpen
     log('Step 3/4 — Database opened in ' + (openMs / 1000).toFixed(1) + 's', 'info', 65, 'db-open')
 
-    log('Step 4/4 — Querying table list...', 'info', 66)
+    log('Step 4/4 — Performing deep data audit...', 'info', 66)
     var tablesResult = db.exec("SELECT name FROM sqlite_master WHERE type='table'")
-
-    if (!tablesResult.length) {
-      log('No tables found in database', 'warn', 100)
-      db.close()
-      self.postMessage({ type: 'done', content: 'SQLite DB: ' + fileName + '\nNo tables found.' })
-      return
+    var tables = tablesResult[0] ? tablesResult[0].values.map(function(r) { return r[0] }) : []
+    
+    var dataInventory = {
+      fileName: fileName,
+      fileSize: formatFileSize(fileSize),
+      tablesFound: tables.length,
+      metrics: {}
     }
 
-    var tables = tablesResult[0].values.map(function(r) { return r[0] })
-    var toRead = tables.slice(0, 20)
-    var tablePreview = toRead.slice(0, 6).join(', ') + (tables.length > 6 ? ' +' + (tables.length - 6) + ' more' : '')
-    log('Step 4/4 — Found ' + tables.length + ' table' + (tables.length !== 1 ? 's' : '') + ': ' + tablePreview, 'info', 68)
+    // Common health metrics and their likely table names/patterns
+    var metricMap = {
+      steps: ['steps', 'step_count', 'ActivitySamples'],
+      sleep: ['sleep', 'sleep_session', 'sleep_stage'],
+      hrv: ['hrv', 'heart_rate_variability', 'rmssd'],
+      heartRate: ['heart_rate', 'hr_samples', 'resting_heart_rate'],
+      weight: ['weight', 'body_mass'],
+      exercise: ['exercise', 'workout', 'activity_record'],
+      nutrition: ['nutrition', 'food', 'diet'],
+      respiratory: ['respiratory', 'breathing']
+    }
 
-    var output = 'SQLITE DB: ' + fileName + '\nTables (' + tables.length + '): ' + tables.join(', ') + '\n\n'
-
-    for (var i = 0; i < toRead.length; i++) {
-      var table = toRead[i]
-      var pct = 68 + Math.round((i / toRead.length) * 28)
-      log('Step 4/4 — [' + (i + 1) + '/' + toRead.length + '] Reading table: ' + table, 'info', pct)
+    for (var i = 0; i < tables.length; i++) {
+      var table = tables[i]
+      var pct = 66 + Math.round((i / tables.length) * 30)
+      log('Step 4/4 — Auditing table [' + (i + 1) + '/' + tables.length + ']: ' + table, 'info', pct)
 
       try {
         var countResult = db.exec('SELECT COUNT(*) FROM "' + table + '"')
-        var count = countResult[0] && countResult[0].values[0] ? countResult[0].values[0][0] : 0
-        output += 'TABLE: ' + table + ' — ' + count.toLocaleString() + ' rows\n'
-
-        if (count > 0) {
-          // Get schema to find dates and numbers
-          var infoResult = db.exec('PRAGMA table_info("' + table + '")')
-          var cols = infoResult[0].values.map(function(c) { return { name: c[1], type: c[2].toUpperCase() } })
-          
-          var dateCols = cols.filter(function(c) { 
-            var n = c.name.toLowerCase()
-            return n.indexOf('time') !== -1 || n.indexOf('date') !== -1 || n.indexOf('stamp') !== -1
-          })
-          
-          var numCols = cols.filter(function(c) {
-            var t = c.type
-            var n = c.name.toLowerCase()
-            return (t.indexOf('INT') !== -1 || t.indexOf('FLOAT') !== -1 || t.indexOf('REAL') !== -1 || t.indexOf('NUM') !== -1) 
-                   && n.indexOf('id') === -1 && n !== 'version'
-          })
-
-          // Build aggregate query
-          var aggs = []
-          dateCols.forEach(function(c) { 
-            aggs.push('MIN("' + c.name + '") as min_' + c.name)
-            aggs.push('MAX("' + c.name + '") as max_' + c.name)
-          })
-          numCols.slice(0, 5).forEach(function(c) { // Limit to 5 numeric aggs to keep query fast
-            aggs.push('AVG("' + c.name + '") as avg_' + c.name)
-          })
-
-          if (aggs.length > 0) {
-            try {
-              var aggResult = db.exec('SELECT ' + aggs.join(', ') + ' FROM "' + table + '"')
-              if (aggResult.length) {
-                output += 'Summary Stats:\n'
-                aggResult[0].columns.forEach(function(col, ci) {
-                  var val = aggResult[0].values[0][ci]
-                  output += '  ' + col + ': ' + (typeof val === 'number' ? val.toFixed(2) : val) + '\n'
-                })
-              }
-            } catch (aggErr) {
-              // Fallback if aggregation fails
-            }
-          }
-
-          // Still provide a small sample for context
-          var sampleResult = db.exec('SELECT * FROM "' + table + '" LIMIT 3')
-          if (sampleResult.length) {
-            output += 'Sample rows:\n'
-            var sampleCols = sampleResult[0].columns
-            sampleResult[0].values.forEach(function(row) {
-              output += '  ' + row.map(function(v, ci) { return sampleCols[ci] + '=' + v }).join(' | ') + '\n'
-            })
+        var count = countResult[0] ? countResult[0].values[0][0] : 0
+        
+        var schemaResult = db.exec('PRAGMA table_info("' + table + '")')
+        var cols = schemaResult[0] ? schemaResult[0].values.map(function(c) { return { name: c[1], type: c[2] } }) : []
+        
+        var metricKey = 'other'
+        for (var key in metricMap) {
+          if (metricMap[key].some(function(p) { return table.toLowerCase().indexOf(p) !== -1 })) {
+            metricKey = key
+            break
           }
         }
-        output += '\n'
-      } catch (tableErr) {
-        log('Table ' + table + ' error: ' + tableErr.message, 'warn', pct)
-        output += 'TABLE: ' + table + ' — [error: ' + tableErr.message + ']\n\n'
+
+        if (!dataInventory.metrics[metricKey]) dataInventory.metrics[metricKey] = []
+        
+        var stats = { tableName: table, rows: count, status: count > 0 ? 'present' : 'empty' }
+        
+        if (count > 0) {
+          // Detect date ranges
+          var dateCol = cols.find(function(c) { 
+            var n = c.name.toLowerCase()
+            return n.indexOf('time') !== -1 || n.indexOf('date') !== -1 || n.indexOf('stamp') !== -1 
+          })
+          
+          if (dateCol) {
+            try {
+              var rangeRes = db.exec('SELECT MIN("' + dateCol.name + '"), MAX("' + dateCol.name + '") FROM "' + table + '"')
+              if (rangeRes[0]) {
+                stats.range = [rangeRes[0].values[0][0], rangeRes[0].values[0][1]]
+              }
+            } catch(e) {}
+          }
+
+          // Source detection (for deduplication audit)
+          var sourceCol = cols.find(function(c) { return c.name.toLowerCase().indexOf('source') !== -1 || c.name.toLowerCase().indexOf('package') !== -1 })
+          if (sourceCol) {
+            try {
+              var sourceRes = db.exec('SELECT DISTINCT "' + sourceCol.name + '" FROM "' + table + '" LIMIT 10')
+              if (sourceRes[0]) {
+                stats.sources = sourceRes[0].values.map(function(v) { return v[0] })
+                if (stats.sources.length > 1) {
+                  stats.qualityWarning = "Possible duplicate sources: " + stats.sources.join(', ')
+                }
+              }
+            } catch(e) {}
+          }
+
+          // Numeric averages for key columns
+          var numCols = cols.filter(function(c) {
+            var t = c.type.toUpperCase()
+            var n = c.name.toLowerCase()
+            return (t.indexOf('INT') !== -1 || t.indexOf('FLOAT') !== -1 || t.indexOf('REAL') !== -1) && n.indexOf('id') === -1
+          }).slice(0, 3)
+
+          if (numCols.length > 0) {
+            var aggQueries = numCols.map(function(c) { return 'AVG("' + c.name + '") as avg_' + c.name }).join(', ')
+            try {
+              var aggRes = db.exec('SELECT ' + aggQueries + ' FROM "' + table + '"')
+              if (aggRes[0]) {
+                stats.averages = {}
+                aggRes[0].columns.forEach(function(col, ci) {
+                  stats.averages[col] = aggRes[0].values[0][ci]
+                })
+              }
+            } catch(e) {}
+          }
+        }
+
+        dataInventory.metrics[metricKey].push(stats)
+      } catch (e) {
+        if (!dataInventory.errors) dataInventory.errors = []
+        dataInventory.errors.push(table + ": " + e.message)
       }
     }
 
     db.close()
-    var finalContent = truncate(output, 15000)
-    log('Done — ' + toRead.length + ' table' + (toRead.length !== 1 ? 's' : '') + ' read, ' + finalContent.length.toLocaleString() + ' chars extracted', 'success', 100)
-    self.postMessage({ type: 'done', content: finalContent })
+    
+    // Final report construction
+    var report = "DATA PACK: STRUCTURED HEALTH INVENTORY\n"
+    report += "File: " + dataInventory.fileName + " (" + dataInventory.fileSize + ")\n"
+    report += "Tables Found: " + dataInventory.tablesFound + "\n\n"
+    
+    for (var m in dataInventory.metrics) {
+      report += "=== METRIC: " + m.toUpperCase() + " ===\n"
+      dataInventory.metrics[m].forEach(function(s) {
+        report += "- Table: " + s.tableName + " | Rows: " + s.rows.toLocaleString() + " | Status: " + s.status + "\n"
+        if (s.range) report += "  Range: " + s.range[0] + " to " + s.range[1] + "\n"
+        if (s.sources) report += "  Sources: " + s.sources.join(', ') + "\n"
+        if (s.qualityWarning) report += "  !! QUALITY WARNING: " + s.qualityWarning + "\n"
+        if (s.averages) {
+          report += "  Averages: " + Object.keys(s.averages).map(function(k) { 
+            return k.replace('avg_', '') + ": " + (typeof s.averages[k] === 'number' ? s.averages[k].toFixed(2) : s.averages[k])
+          }).join(', ') + "\n"
+        }
+      })
+      report += "\n"
+    }
+
+    log('Done — deep audit complete', 'success', 100)
+    self.postMessage({ type: 'done', content: report })
 
   } catch (err) {
-    log('SQLite parse failed: ' + err.message, 'error', 100)
+    log('Audit failed: ' + err.message, 'error', 100)
     self.postMessage({ type: 'error', message: err.message })
   }
 }

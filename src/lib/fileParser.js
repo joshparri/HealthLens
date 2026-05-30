@@ -103,11 +103,33 @@ function truncate(text, maxChars) {
 
 function summariseCSV(text, filename) {
   const lines = text.trim().split('\n')
-  const header = lines[0] || ''
+  if (lines.length < 2) return `CSV FILE: ${filename}\nEmpty or header-only file.`
+  
+  const header = lines[0]
   const rowCount = lines.length - 1
-  const sample = lines.slice(0, 6).join('\n')
-  const tail = lines.slice(-3).join('\n')
-  return `CSV FILE: ${filename}\nColumns: ${header}\nTotal rows: ${rowCount}\n\nFirst rows:\n${sample}\n\nLast rows:\n${tail}\n\nFull extract (up to 10000 chars):\n${truncate(text, 10000)}`
+  const cols = header.split(',').map(c => c.trim())
+  
+  // Basic numeric analysis
+  let numericSummary = ''
+  const sampleRows = lines.slice(1, 100).map(l => l.split(','))
+  
+  cols.forEach((col, ci) => {
+    const vals = sampleRows.map(r => parseFloat(r[ci])).filter(v => !isNaN(v))
+    if (vals.length > 5) {
+      const avg = vals.reduce((a, b) => a + b, 0) / vals.length
+      numericSummary += `  - ${col}: avg ~${avg.toFixed(2)} (from sample)\n`
+    }
+  })
+
+  return `CSV FILE: ${filename}
+Columns: ${header}
+Total rows: ${rowCount}
+${numericSummary}
+First rows:
+${lines.slice(0, 4).join('\n')}
+
+Full extract (up to 8000 chars):
+${truncate(text, 8000)}`
 }
 
 function summariseJSON(text, filename) {
