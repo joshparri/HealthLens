@@ -1,0 +1,9 @@
+.DS_Store
+node_modules/
+dist/
+.env
+*.db
+*.sqlite
+*.zip
+health_connect_export*
+*_private*

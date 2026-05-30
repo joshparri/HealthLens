@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Josh Health Lens</title>
+  <meta name="description" content="Local-first health data pattern analysis for Health Connect, CSV, JSON and PDF exports." />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <nav class="topbar">
+      <div class="brand">
+        <div class="logo">JHL</div>
+        <div>
+          <strong>Josh Health Lens</strong>
+          <span>local-first pattern analysis</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <button id="sampleBtn" class="ghost">Load sample</button>
+        <button id="clearBtn" class="ghost danger">Clear data</button>
+        <button id="exportBtn" class="primary">Export report</button>
+      </div>
+    </nav>
+    <section class="hero-grid">
+      <div>
+        <p class="eyebrow">Consumer health data → cautious, practical insight</p>
+        <h1>Upload messy health files. Get grounded multi-lens analysis.</h1>
+        <p class="lede">Designed for Health Connect databases, wearable CSVs, JSON exports, notes and health PDFs. It separates raw data, cleaned data, inference and medical boundaries.</p>
+        <div class="safety-note">
+          <strong>Safety boundary:</strong> This is personal health pattern analysis, not medical advice. Discuss medical concerns, pathology results, ECG findings, chest pain, fainting, palpitations, abnormal breathlessness or medication decisions with a GP or qualified clinician.
+        </div>
+      </div>
+      <div class="hero-card">
+        <div class="metric big"><span id="fileCount">0</span><small>files loaded</small></div>
+        <div class="metric"><span id="recordCount">0</span><small>metrics extracted</small></div>
+        <div class="metric"><span id="dateRange">No data yet</span><small>date range</small></div>
+      </div>
+    </section>
+  </header>
+
+  <main class="shell">
+    <section class="panel upload-panel" id="dropZone">
+      <input type="file" id="fileInput" multiple accept=".csv,.json,.txt,.md,.pdf,.db,.sqlite,.zip" />
+      <div class="upload-copy">
+        <div class="upload-icon">⬆</div>
+        <h2>Drop files here or click to upload</h2>
+        <p>CSV, JSON, Health Connect SQLite DB, PDF, text and Markdown are supported. ZIP files are detected and listed; unpacking is marked as a next-step task.</p>
+      </div>
+    </section>
+
+    <section class="tabs" aria-label="App sections">
+      <button class="tab active" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="sources">Sources</button>
+      <button class="tab" data-tab="quality">Data quality</button>
+      <button class="tab" data-tab="lenses">Analysis lenses</button>
+      <button class="tab" data-tab="experiments">Experiments</button>
+      <button class="tab" data-tab="qa">Ask the data</button>
+    </section>
+
+    <section id="dashboard" class="tab-page active">
+      <div class="grid two">
+        <article class="panel">
+          <div class="section-head"><h2>Latest snapshot</h2><span id="snapshotConfidence" class="pill">No data</span></div>
+          <div id="snapshotCards" class="cards"></div>
+        </article>
+        <article class="panel">
+          <div class="section-head"><h2>Trend chart</h2><select id="chartMetric"></select></div>
+          <div id="chart" class="chart empty">Upload data to show trends.</div>
+        </article>
+      </div>
+      <article class="panel">
+        <div class="section-head"><h2>Plain-English summary</h2><span class="pill">Evidence → inference → experiment</span></div>
+        <div id="plainSummary" class="prose muted">No health data loaded yet.</div>
+      </article>
+    </section>
+
+    <section id="sources" class="tab-page">
+      <article class="panel">
+        <div class="section-head"><h2>File inventory</h2><span class="pill">source audit</span></div>
+        <div class="table-wrap"><table id="fileTable"><thead><tr><th>File</th><th>Detected type</th><th>Metrics</th><th>Date range</th><th>Confidence</th><th>Warnings</th></tr></thead><tbody></tbody></table></div>
+      </article>
+    </section>
+
+    <section id="quality" class="tab-page">
+      <article class="panel">
+        <div class="section-head"><h2>Data quality report</h2><span class="pill">do not overclaim</span></div>
+        <div id="qualityReport" class="quality-grid"></div>
+      </article>
+    </section>
+
+    <section id="lenses" class="tab-page">
+      <article class="panel">
+        <div class="section-head"><h2>Analysis lenses</h2><button id="runAllBtn" class="primary small">Run all lenses</button></div>
+        <div class="lens-grid" id="lensGrid"></div>
+      </article>
+    </section>
+
+    <section id="experiments" class="tab-page">
+      <article class="panel">
+        <div class="section-head"><h2>Experiment designer</h2><span class="pill">minimum effective dose</span></div>
+        <div id="experimentsList" class="experiment-list"></div>
+      </article>
+    </section>
+
+    <section id="qa" class="tab-page">
+      <article class="panel">
+        <div class="section-head"><h2>Ask the data</h2><span class="pill">local rules-based answers</span></div>
+        <div class="qa-row">
+          <input id="questionInput" placeholder="e.g. Is my sleep getting worse? What changed in the last 30 days?" />
+          <button id="askBtn" class="primary">Ask</button>
+        </div>
+        <div id="answerBox" class="prose answer muted">Ask a question after loading data.</div>
+      </article>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Built as a cautious MVP. Local processing first. CDN libraries are only loaded when parsing SQLite or PDF files.</p>
+  </footer>
+
+  <script src="js/app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+date,steps,sleep_hours,hrv_rmssd_ms,resting_hr_bpm,respiratory_rate_bpm,weight_kg,exercise_minutes
+2026-05-01,11240,7.8,38,58,12,81.5,20
+2026-05-02,15300,8.1,41,57,12,81.4,0
+2026-05-03,9800,6.9,32,61,13,81.7,35
