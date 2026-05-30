@@ -25,6 +25,7 @@ export default function App() {
   const [files, setFiles] = useState([])
   const [parsedFiles, setParsedFiles] = useState([])
   const [parsing, setParsing] = useState(false)
+  const [parseLog, setParseLog] = useState([])
   const [selectedModes, setSelectedModes] = useState(['quickSummary', 'deepPattern'])
   const [stage, setStage] = useState(connection ? STAGES.UPLOAD : STAGES.SETUP)
   const [analysisResult, setAnalysisResult] = useState('')
@@ -42,10 +43,13 @@ export default function App() {
   const handleFiles = useCallback(async (newFiles) => {
     if (!newFiles.length) return
     setParsing(true)
+    setParseLog([])
     setError('')
     const parsed = []
     for (const f of newFiles) {
-      const result = await parseFile(f)
+      const result = await parseFile(f, (entry) => {
+        setParseLog(prev => [...prev, entry])
+      })
       parsed.push(result)
     }
     setFiles(prev => [...prev, ...newFiles])
@@ -148,6 +152,7 @@ export default function App() {
               files={files}
               parsedFiles={parsedFiles}
               parsing={parsing}
+              parseLog={parseLog}
               onFiles={handleFiles}
               onRemove={removeFile}
             />
