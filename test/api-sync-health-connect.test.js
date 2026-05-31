@@ -206,7 +206,13 @@ test('sync endpoint cleans up import if summary insert fails', async () => {
   })
 
   const res = createResponse()
-  await testHandler(validRequest(), res)
+  const originalError = console.error
+  console.error = () => {}
+  try {
+    await testHandler(validRequest(), res)
+  } finally {
+    console.error = originalError
+  }
 
   assert.equal(res.statusCode, 500)
   assert.equal(res.body.error, 'Failed to record daily summaries')

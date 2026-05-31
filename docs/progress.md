@@ -37,11 +37,17 @@ The active milestone is the dependable MVP loop:
   - added mocked success/idempotency/cleanup tests
   - preserved legitimate zero values such as 0 steps or 0 sleep minutes
   - cleaned up the import row if summary insertion fails
+- Added testable Supabase dashboard summarisation and trend chart data:
+  - empty rows return a clean empty state
+  - zero values stay visible
+  - warnings can come back from Supabase as arrays or JSON strings
+  - chart rows are prepared for steps, sleep, HRV, resting HR, weight, and exercise
 
 ## Still To Do
 
 - Add admin self-test positive-path tests with a mocked Supabase admin client.
 - Add dashboard tests for empty Supabase data and fake synced data.
+- Add browser-level screenshot checks for the Supabase dashboard charts.
 - Run the fake sync script against production when `HEALTHLENS_SYNC_SECRET` is available locally.
 - Build real Android Health Connect reads instead of the current placeholder button.
 - Add charts for synced steps, sleep, HRV, resting HR, respiratory rate, weight, and exercise minutes.

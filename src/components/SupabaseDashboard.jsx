@@ -1,16 +1,5 @@
 import { useMemo } from 'react'
-
-function parseWarnings(rows) {
-  const warnings = new Set()
-  rows.forEach((row) => {
-    if (!row) return
-    try {
-      const parsed = row.warnings_json ? JSON.parse(row.warnings_json) : []
-      if (Array.isArray(parsed)) parsed.forEach((warning) => warning && warnings.add(warning))
-    } catch (_) {}
-  })
-  return [...warnings]
-}
+import { summarizeDailyRows } from '../lib/supabaseSummary.js'
 
 function formatValue(value, fallback = '--', digits = 0) {
   if (value === null || value === undefined || Number.isNaN(value)) return fallback
@@ -20,60 +9,54 @@ function formatValue(value, fallback = '--', digits = 0) {
   return String(value)
 }
 
-function average(rows, key) {
-  const values = rows.map((row) => row[key]).filter((value) => typeof value === 'number')
-  if (values.length === 0) return null
-  return values.reduce((sum, value) => sum + value, 0) / values.length
+function MiniLineChart({ rows, dataKey, stroke }) {
+  const width = 320
+  const height = 132
+  const pad = 18
+  const points = rows
+    .map((row, index) => ({ index, value: row[dataKey] }))
+    .filter((point) => typeof point.value === 'number')
+
+  if (points.length < 2) {
+    return <div className="flex h-44 items-center justify-center text-sm text-slate-ui">Not enough points yet.</div>
+  }
+
+  const min = Math.min(...points.map((point) => point.value))
+  const max = Math.max(...points.map((point) => point.value))
+  const spread = max - min || 1
+  const maxIndex = Math.max(1, rows.length - 1)
+  const path = points.map((point, index) => {
+    const x = pad + (point.index / maxIndex) * (width - pad * 2)
+    const y = height - pad - ((point.value - min) / spread) * (height - pad * 2)
+    return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
+  }).join(' ')
+
+  return (
+    <div className="mt-4 h-44">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full overflow-visible">
+        {[0.25, 0.5, 0.75].map((line) => (
+          <line
+            key={line}
+            x1={pad}
+            x2={width - pad}
+            y1={pad + line * (height - pad * 2)}
+            y2={pad + line * (height - pad * 2)}
+            stroke="rgba(148, 163, 184, 0.13)"
+            strokeWidth="1"
+          />
+        ))}
+        <path d={path} fill="none" stroke={stroke} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <text x={pad} y={height - 2} fill="#94a3b8" fontSize="10">{rows[0]?.label || ''}</text>
+        <text x={width - pad} y={height - 2} fill="#94a3b8" fontSize="10" textAnchor="end">{rows[rows.length - 1]?.label || ''}</text>
+        <text x={pad} y={12} fill="#94a3b8" fontSize="10">{formatValue(max, '--', 1)}</text>
+        <text x={width - pad} y={12} fill="#94a3b8" fontSize="10" textAnchor="end">{formatValue(min, '--', 1)}</text>
+      </svg>
+    </div>
+  )
 }
 
 export default function SupabaseDashboard({ summaries, selectedDays, onSelectDays }) {
-  const summary = useMemo(() => {
-    if (!summaries || summaries.length === 0) return null
-
-    const latest = summaries[summaries.length - 1]
-    const totals = summaries.reduce(
-      (acc, row) => {
-        if (typeof row.steps === 'number') acc.steps += row.steps
-        if (typeof row.sleep_minutes === 'number') acc.sleep_minutes += row.sleep_minutes
-        if (typeof row.exercise_minutes === 'number') acc.exercise_minutes += row.exercise_minutes
-        if (typeof row.calories_total === 'number') acc.calories_total += row.calories_total
-        if (typeof row.distance_m === 'number') acc.distance_m += row.distance_m
-        if (typeof row.active_minutes === 'number') acc.active_minutes += row.active_minutes
-        if (typeof row.hrv_rmssd === 'number') acc.hrv_rmssd += row.hrv_rmssd
-        if (typeof row.resting_hr === 'number') acc.resting_hr += row.resting_hr
-        if (typeof row.respiratory_rate === 'number') acc.respiratory_rate += row.respiratory_rate
-        if (typeof row.weight_kg === 'number') acc.weight_kg += row.weight_kg
-        if (typeof row.source_confidence === 'number') acc.source_confidence += row.source_confidence
-        return acc
-      },
-      {
-        steps: 0,
-        sleep_minutes: 0,
-        exercise_minutes: 0,
-        active_minutes: 0,
-        calories_total: 0,
-        distance_m: 0,
-        hrv_rmssd: 0,
-        resting_hr: 0,
-        respiratory_rate: 0,
-        weight_kg: 0,
-        source_confidence: 0,
-      }
-    )
-
-    return {
-      latest,
-      totals,
-      averages: {
-        hrv_rmssd: average(summaries, 'hrv_rmssd'),
-        resting_hr: average(summaries, 'resting_hr'),
-        respiratory_rate: average(summaries, 'respiratory_rate'),
-        weight_kg: average(summaries, 'weight_kg'),
-        source_confidence: average(summaries, 'source_confidence'),
-      },
-      warnings: parseWarnings(summaries),
-    }
-  }, [summaries])
+  const summary = useMemo(() => summarizeDailyRows(summaries || []), [summaries])
 
   if (!summary) {
     return (
@@ -90,15 +73,24 @@ export default function SupabaseDashboard({ summaries, selectedDays, onSelectDay
   }
 
   const cards = [
-    { label: 'Steps', value: formatValue(summary.totals.steps || summary.latest.steps, '--'), note: 'Total steps' },
-    { label: 'Sleep minutes', value: formatValue(summary.totals.sleep_minutes || summary.latest.sleep_minutes, '--'), note: 'Total sleep' },
+    { label: 'Steps', value: formatValue(summary.totals.steps ?? summary.latest.steps, '--'), note: 'Total steps' },
+    { label: 'Sleep minutes', value: formatValue(summary.totals.sleep_minutes ?? summary.latest.sleep_minutes, '--'), note: 'Total sleep' },
     { label: 'HRV / RMSSD', value: formatValue(summary.averages.hrv_rmssd, '--', 1), note: 'Average over range' },
     { label: 'Resting HR', value: formatValue(summary.averages.resting_hr, '--', 1), note: 'Average rest HR' },
     { label: 'Respiratory rate', value: formatValue(summary.averages.respiratory_rate, '--', 1), note: 'Average respiration' },
     { label: 'Weight', value: formatValue(summary.averages.weight_kg, '--', 1), note: 'Average kg' },
-    { label: 'Exercise minutes', value: formatValue(summary.totals.exercise_minutes || summary.latest.exercise_minutes, '--'), note: 'Total exercise' },
+    { label: 'Exercise minutes', value: formatValue(summary.totals.exercise_minutes ?? summary.latest.exercise_minutes, '--'), note: 'Total exercise' },
     { label: 'Source confidence', value: formatValue(summary.averages.source_confidence, '--', 2), note: 'Average confidence' },
   ]
+
+  const charts = [
+    { key: 'steps', label: 'Steps', stroke: '#34d399' },
+    { key: 'sleep_hours', label: 'Sleep hours', stroke: '#60a5fa' },
+    { key: 'hrv_rmssd', label: 'HRV / RMSSD', stroke: '#fbbf24' },
+    { key: 'resting_hr', label: 'Resting HR', stroke: '#fb7185' },
+    { key: 'weight_kg', label: 'Weight kg', stroke: '#a78bfa' },
+    { key: 'exercise_minutes', label: 'Exercise minutes', stroke: '#2dd4bf' },
+  ].filter((chart) => summary.chartRows.some((row) => typeof row[chart.key] === 'number'))
 
   return (
     <section className="rounded-3xl border border-slate-border bg-ink-soft p-6">
@@ -131,6 +123,19 @@ export default function SupabaseDashboard({ summaries, selectedDays, onSelectDay
             <p className="mt-2 text-sm text-slate-ui">{card.note}</p>
           </div>
         ))}
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-2">
+        {charts.length > 0 ? charts.map((chart) => (
+          <div key={chart.key} className="rounded-3xl border border-slate-border bg-ink p-5">
+            <p className="text-xs uppercase tracking-[0.35em] text-slate-ui">{chart.label}</p>
+            <MiniLineChart rows={summary.chartRows} dataKey={chart.key} stroke={chart.stroke} />
+          </div>
+        )) : (
+          <div className="rounded-3xl border border-slate-border bg-ink p-5 text-sm text-slate-ui">
+            No chartable synced metrics found for this range.
+          </div>
+        )}
       </div>
 
       <div className="mt-6 rounded-3xl border border-slate-border bg-ink p-5">

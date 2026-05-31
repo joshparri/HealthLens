@@ -47,8 +47,9 @@ Current progress
 - SQLite parsing now runs through a worker and produces an evidence-grounded Data Pack instead of raw sample rows.
 - Provider errors now include the actual HTTP status/message and practical hints.
 - Supabase sync/dashboard plumbing exists; sync endpoint positive-path tests now cover success, idempotency, zero values, and summary-insert cleanup.
+- Supabase dashboard summaries now have test coverage for empty data, zero values, mixed warning payloads, and chart-ready rows.
 
 Next steps
 - Add admin self-test positive-path tests with a mocked Supabase admin client.
-- Add dashboard tests for empty and fake Supabase data.
+- Add browser-level screenshot checks for the Supabase dashboard charts.
 - Build the real Android Health Connect reader after the web sync loop is proven.
