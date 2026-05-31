@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-export default function Dashboard({ parsedFiles }) {
+export default function Dashboard({ parsedFiles = [] }) {
   const stats = useMemo(() => {
     const report = parsedFiles.find(f => f.content?.includes('DATA PACK: STRUCTURED HEALTH INVENTORY'))
     if (!report) return null

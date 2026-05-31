@@ -350,7 +350,7 @@ export default function App() {
             )}
 
             {stage === STAGES.UPLOAD && !isSupabaseConfigured && (
-              <Dashboard />
+              <Dashboard parsedFiles={parsedFiles} />
             )}
 
             {(stage === STAGES.ANALYSE || stage === STAGES.RESULT) && (
