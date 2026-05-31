@@ -37,6 +37,49 @@ async function sendSync() {
         sources: { android: true },
       },
     ],
+    sleepRecords: [
+      {
+        start_time: `${date}T22:30:00Z`,
+        end_time: `${date}T06:15:00Z`,
+        duration_minutes: 465,
+        timezone: 'Australia/Sydney',
+        efficiency: 0.92,
+        stages: { deep: 120, light: 240, rem: 105 },
+        source_id: 'health_connect'
+      }
+    ],
+    heartRecords: [
+      {
+        timestamp: `${date}T08:00:00Z`,
+        metric_type: 'resting_hr',
+        value: 58,
+        source_id: 'health_connect'
+      },
+      {
+        timestamp: `${date}T08:00:00Z`,
+        metric_type: 'hrv_rmssd',
+        value: 42,
+        source_id: 'health_connect'
+      }
+    ],
+    bodyRecords: [
+      {
+        timestamp: `${date}T08:15:00Z`,
+        metric_type: 'weight_kg',
+        value: 77.2,
+        source_id: 'health_connect'
+      }
+    ],
+    exerciseRecords: [
+      {
+        start_time: `${date}T17:00:00Z`,
+        end_time: `${date}T17:45:00Z`,
+        activity_type: 'running',
+        calories_burned: 450,
+        distance_m: 5200,
+        source_id: 'health_connect'
+      }
+    ],
     syncStartedAt: new Date().toISOString(),
     appVersion: 'HealthLensSync/0.1.0',
   }

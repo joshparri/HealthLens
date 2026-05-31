@@ -72,6 +72,54 @@ export default async function handler(req, res) {
 
     const importId = impData.id
 
+    // Prepare detailed records (sleep, heart, weight, exercise) if present
+    const sleepRecords = (body.sleepRecords || []).map(r => ({
+      user_id,
+      import_id: importId,
+      start_time: r.start_time,
+      end_time: r.end_time,
+      duration_minutes: r.duration_minutes,
+      timezone: r.timezone || body.timezone || 'Australia/Sydney',
+      efficiency: r.efficiency || null,
+      stages_json: JSON.stringify(r.stages || {}),
+      source_id: r.source_id || 'health_connect'
+    }))
+
+    const heartRecords = (body.heartRecords || []).map(r => ({
+      user_id,
+      import_id: importId,
+      timestamp: r.timestamp,
+      metric_type: r.metric_type,
+      value: r.value,
+      source_id: r.source_id || 'health_connect'
+    }))
+
+    const bodyRecords = (body.bodyRecords || []).map(r => ({
+      user_id,
+      import_id: importId,
+      timestamp: r.timestamp,
+      metric_type: r.metric_type,
+      value: r.value,
+      source_id: r.source_id || 'health_connect'
+    }))
+
+    const exerciseRecords = (body.exerciseRecords || []).map(r => ({
+      user_id,
+      import_id: importId,
+      start_time: r.start_time,
+      end_time: r.end_time,
+      activity_type: r.activity_type,
+      calories_burned: r.calories_burned || null,
+      distance_m: r.distance_m || null,
+      source_id: r.source_id || 'health_connect'
+    }))
+
+    // Batch insert detailed records
+    if (sleepRecords.length) await supabaseAdmin.from('sleep_sessions').insert(sleepRecords)
+    if (heartRecords.length) await supabaseAdmin.from('heart_metrics').insert(heartRecords)
+    if (bodyRecords.length) await supabaseAdmin.from('body_measurements').insert(bodyRecords)
+    if (exerciseRecords.length) await supabaseAdmin.from('exercise_sessions').insert(exerciseRecords)
+
     // Prepare daily summaries for insert
     const summaries = body.dailySummaries.map(s => ({
       user_id,

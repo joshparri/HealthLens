@@ -117,13 +117,59 @@ export async function getMetricAvailability({ days = 30, startDate, endDate } = 
     }
   })
 
-  if (metrics.rows > 0) {
-    metrics.hrv_rmssd = Number((metrics.hrv_rmssd / metrics.rows).toFixed(1))
-    metrics.resting_hr = Number((metrics.resting_hr / metrics.rows).toFixed(1))
-    metrics.respiratory_rate = Number((metrics.respiratory_rate / metrics.rows).toFixed(1))
-    metrics.weight_kg = Number((metrics.weight_kg / metrics.rows).toFixed(1))
-    metrics.source_confidence = Number((metrics.source_confidence / metrics.rows).toFixed(2))
+  return { data: metrics, error: null }
+}
+
+export async function getDetailedRecords(table, { limit = 1000, days = 30 } = {}) {
+  if (!isSupabaseConfigured) {
+    return { data: [], error: new Error('Supabase is not configured') }
+  }
+  
+  const start = defaultDateString(new Date(Date.now() - days * 24 * 60 * 60 * 1000))
+  
+  let query = supabase.from(table).select('*').limit(limit)
+  
+  // Apply date filtering based on table schema
+  if (table === 'sleep_sessions' || table === 'exercise_sessions') {
+    query = query.gte('start_time', start)
+  } else if (table === 'heart_metrics' || table === 'body_measurements') {
+    query = query.gte('timestamp', start)
+  }
+  
+  const response = await query
+  return normalizeResult(response)
+}
+
+export async function buildSupabaseDataPack({ days = 30 } = {}) {
+  const summaries = await getDailySummaries({ days })
+  const sleep = await getDetailedRecords('sleep_sessions', { days })
+  const heart = await getDetailedRecords('heart_metrics', { days })
+  const body = await getDetailedRecords('body_measurements', { days })
+  const exercise = await getDetailedRecords('exercise_sessions', { days })
+  
+  let pack = `=== SUPABASE SYNCED DATA (Last ${days} days) ===\n`
+  
+  if (summaries.data?.length) {
+    pack += `\n[DAILY SUMMARIES: ${summaries.data.length} records]\n`
+    summaries.data.forEach(s => {
+      pack += `- ${s.date}: ${s.steps || 0} steps, ${s.sleep_minutes || 0}m sleep, HRV ${s.hrv_rmssd || '--'}\n`
+    })
+  }
+  
+  if (sleep.data?.length) {
+    pack += `\n[SLEEP SESSIONS: ${sleep.data.length} records]\n`
+    sleep.data.slice(0, 10).forEach(s => {
+      pack += `- ${s.start_time} to ${s.end_time}: ${s.duration_minutes}m, efficiency ${s.efficiency || '--'}\n`
+    })
   }
 
-  return { data: metrics, error: null }
+  if (heart.data?.length) {
+    pack += `\n[HEART/BIOMETRICS: ${heart.data.length} records]\n`
+    const latest = heart.data.slice(0, 10)
+    latest.forEach(h => {
+      pack += `- ${h.timestamp}: ${h.metric_type} = ${h.value}\n`
+    })
+  }
+
+  return pack
 }

@@ -412,10 +412,12 @@ Recent additions:
 - [x] Add Daily Context Tags / Check-in form (Phase 1/2)
 - [x] Add Supabase-backed dashboard and Sync Status (Phase 5/6)
 - [x] Secure admin endpoints and add fake sync test script (Phase 7)
-- [x] Create Android Health Connect sync scaffold (Phase 6)
-- [x] Implement Recharts trend visualization for steps, HRV, and RHR (Phase 5)
+- [x] Create Android Health Connect sync scaffold and reading logic (Phase 6)
+- [x] Implement Recharts trend visualization for steps, HRV, RHR, Weight, and Sleep (Phase 5)
 - [x] Add HTML/Markdown export options and GP Summary mode (Phase 6)
-- [x] Implement Analysis History (Local Profile Memory) in IndexedDB (Phase 8)
+- [x] Implement Deterministic Analysis with Structured Data Packs (Phase 8)
+- [x] Implement Source Priority Deduplication in IndexedDB (Phase 4)
+- [x] Add Privacy controls for clearing local data (Phase 6)
 - [x] Final QA testing and documentation update in plan.md
 
 Deliverables:

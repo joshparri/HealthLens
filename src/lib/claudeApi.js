@@ -1,6 +1,7 @@
 // Multi-provider AI integration: Anthropic, Groq, OpenRouter
 import { SOURCE_PRIORITY } from './schema.js'
 import { buildStructuredDataPack } from './dataPackBuilder.js'
+import { buildSupabaseDataPack, isSupabaseConfigured } from './healthDataApi.js'
 
 const ENDPOINTS = {
   anthropic: 'https://api.anthropic.com/v1/messages',
@@ -205,7 +206,17 @@ export async function checkHealth({ provider, model, apiKey }) {
 }
 
 export async function runAnalysis({ apiKey, provider = 'anthropic', model = 'claude-opus-4-5', parsedFiles, selectedModes, customQuestion, onChunk, onComplete, onError }) {
-  const dataPack = buildStructuredDataPack(parsedFiles)
+  let dataPack = buildStructuredDataPack(parsedFiles)
+
+  // Append synced Supabase data if available
+  if (isSupabaseConfigured) {
+    try {
+      const supabasePack = await buildSupabaseDataPack({ days: 30 })
+      dataPack += `\n\n${supabasePack}`
+    } catch (e) {
+      console.warn('Could not fetch Supabase data for analysis', e)
+    }
+  }
 
   const modeInstructions = selectedModes
     .map(m => ANALYSIS_MODES[m])
@@ -247,7 +258,6 @@ RESPONSE STRUCTURE:
 
 HEALTH DATA PACK:
 ${dataPack}
-`
 
 ---
 

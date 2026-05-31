@@ -7,13 +7,14 @@ This document lists 10 actionable improvements to HealthLens, with suggested nex
    - Map tables into a normalized schema and produce daily summaries.
    - Priority: implement as a web-worker task to avoid blocking UI.
 
-2. Android companion for daily sync (In Progress)
+2. Android companion for daily sync (Done - Scaffold & Reading logic)
    - Create a lightweight Android app to request Health Connect permissions and send daily summaries to HealthLens via a secure endpoint or local file export.
-   - Android scaffold created in `android/HealthLensSync/`.
+   - Android scaffold and Health Connect reading logic implemented in `android/HealthLensSync/`.
 
 3. Normalized local storage (Done)
    - Implement IndexedDB (e.g., `dexie.js`) schema matching `daily_health_summary`, `sleep_sessions`, `lab_results`, etc.
    - Store source provenance, file hash, and import metadata for auditability.
+   - Source priority and deduplication implemented.
 
 4. Robust PDF & lab-parser (Medium)
    - Add targeted parsers for pathology PDFs using `pdfjs` + heuristic lab-value extraction.
