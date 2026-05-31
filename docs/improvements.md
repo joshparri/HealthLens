@@ -55,7 +55,7 @@ Current progress
 - `npm run doctor` now automates local test/build, live app checks, provider checks when keys are present, and optional fake production sync/cleanup.
 - GitHub Actions can now run the doctor manually or daily, using repository secrets if configured.
 - Admin self-test coverage now uses a mocked Supabase admin client for positive-path insert/query/idempotency/cleanup checks.
+- Playwright browser smoke tests now check Supabase dashboard chart rendering on desktop and mobile with mocked Supabase data.
 
 Next steps
-- Add browser-level screenshot checks for the Supabase dashboard charts.
 - Build the real Android Health Connect reader after the web sync loop is proven.

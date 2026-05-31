@@ -35,6 +35,14 @@ HEALTHLENS_SYNC_SECRET=your_secret_here npm run doctor -- --sync --cleanup
 
 The script never prints secret values.
 
+For browser-level dashboard smoke tests:
+
+```bash
+npm run test:browser
+```
+
+This starts the Vite app with mocked Supabase data and checks the synced dashboard charts on desktop and mobile Chromium.
+
 ## Minimal setup path
 
 For the most automated setup, do these once:

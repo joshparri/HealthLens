@@ -33,7 +33,7 @@ function MiniLineChart({ rows, dataKey, stroke }) {
 
   return (
     <div className="mt-4 h-44">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full overflow-visible">
+      <svg data-testid={`sparkline-${dataKey}`} viewBox={`0 0 ${width} ${height}`} className="h-full w-full overflow-visible">
         {[0.25, 0.5, 0.75].map((line) => (
           <line
             key={line}
@@ -60,7 +60,7 @@ export default function SupabaseDashboard({ summaries, selectedDays, onSelectDay
 
   if (!summary) {
     return (
-      <section className="rounded-3xl border border-slate-border bg-ink-soft p-6">
+      <section data-testid="supabase-dashboard-empty" className="rounded-3xl border border-slate-border bg-ink-soft p-6">
         <div className="space-y-3">
           <p className="text-xs uppercase tracking-[0.35em] text-slate-ui">Dashboard</p>
           <h3 className="text-2xl font-semibold text-white">No synced health data yet</h3>
@@ -93,7 +93,7 @@ export default function SupabaseDashboard({ summaries, selectedDays, onSelectDay
   ].filter((chart) => summary.chartRows.some((row) => typeof row[chart.key] === 'number'))
 
   return (
-    <section className="rounded-3xl border border-slate-border bg-ink-soft p-6">
+    <section data-testid="supabase-dashboard" className="rounded-3xl border border-slate-border bg-ink-soft p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-slate-ui">Supabase Dashboard</p>
@@ -136,7 +136,7 @@ export default function SupabaseDashboard({ summaries, selectedDays, onSelectDay
 
       <div className="mt-6 grid gap-4 xl:grid-cols-2">
         {charts.length > 0 ? charts.map((chart) => (
-          <div key={chart.key} className="rounded-3xl border border-slate-border bg-ink p-5">
+          <div key={chart.key} data-testid="supabase-chart" className="rounded-3xl border border-slate-border bg-ink p-5">
             <p className="text-xs uppercase tracking-[0.35em] text-slate-ui">{chart.label}</p>
             <MiniLineChart rows={summary.chartRows} dataKey={chart.key} stroke={chart.stroke} />
           </div>
