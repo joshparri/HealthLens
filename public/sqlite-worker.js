@@ -1,4 +1,4 @@
-// SQLite Web Worker — runs sql.js off the main thread
+// SQLite Web Worker - runs sql.js off the main thread.
 // Receives: { buffer: ArrayBuffer, fileName: string, fileSize: number }
 // Posts:    { type: 'progress', msg, status, pct, id }
 //           { type: 'done', content }
@@ -14,20 +14,338 @@ function log(msg, status, pct, id) {
   self.postMessage({ type: 'progress', msg: msg, status: status || 'info', pct: pct != null ? pct : null, id: id })
 }
 
+function quoteIdent(name) {
+  return '"' + String(name).replace(/"/g, '""') + '"'
+}
+
+function lower(value) {
+  return String(value || '').toLowerCase()
+}
+
+function execFirstValue(db, sql) {
+  var result = db.exec(sql)
+  return result[0] && result[0].values[0] ? result[0].values[0][0] : null
+}
+
+function getColumns(db, table) {
+  var schema = db.exec('PRAGMA table_info(' + quoteIdent(table) + ')')
+  if (!schema[0]) return []
+  return schema[0].values.map(function(row) {
+    return { name: row[1], type: row[2] || '' }
+  })
+}
+
+function getCount(db, table) {
+  return Number(execFirstValue(db, 'SELECT COUNT(*) FROM ' + quoteIdent(table)) || 0)
+}
+
+var METRICS = {
+  steps: {
+    label: 'Steps',
+    patterns: ['step'],
+    values: ['steps', 'step_count', 'count', 'value', 'delta'],
+    aggregate: 'sum',
+  },
+  sleep: {
+    label: 'Sleep',
+    patterns: ['sleep'],
+    values: ['duration', 'duration_minutes', 'minutes', 'seconds', 'asleep', 'sleep'],
+    aggregate: 'sum',
+  },
+  hrv: {
+    label: 'HRV / RMSSD',
+    patterns: ['hrv', 'variability', 'rmssd'],
+    values: ['rmssd', 'hrv', 'value'],
+    aggregate: 'avg',
+  },
+  restingHeartRate: {
+    label: 'Resting Heart Rate',
+    patterns: ['resting_heart', 'restingheart', 'resting_hr', 'rhr'],
+    values: ['resting_hr', 'bpm', 'beats_per_minute', 'value'],
+    aggregate: 'avg',
+  },
+  heartRate: {
+    label: 'Heart Rate',
+    patterns: ['heart_rate', 'heartrate', 'heart rate', 'pulse', 'bpm'],
+    values: ['heart_rate', 'bpm', 'beats_per_minute', 'value'],
+    aggregate: 'avg',
+  },
+  respiratory: {
+    label: 'Respiratory Rate',
+    patterns: ['respiratory', 'breath', 'breathing'],
+    values: ['respiratory_rate', 'breaths_per_minute', 'rate', 'value'],
+    aggregate: 'avg',
+  },
+  weight: {
+    label: 'Weight / Body',
+    patterns: ['weight', 'body_mass', 'bodymass', 'mass', 'body_fat', 'bodyfat'],
+    values: ['weight', 'mass', 'kg', 'body_fat', 'percent', 'value'],
+    aggregate: 'avg',
+  },
+  exercise: {
+    label: 'Exercise Sessions',
+    patterns: ['exercise', 'workout', 'activity_session', 'activityrecord', 'activity_record'],
+    values: ['duration', 'duration_minutes', 'distance', 'calories', 'steps'],
+    aggregate: 'sum',
+  },
+  nutrition: {
+    label: 'Nutrition',
+    patterns: ['nutrition', 'food', 'meal', 'diet'],
+    values: ['calories', 'energy', 'protein', 'carbohydrate', 'fat', 'value'],
+    aggregate: 'sum',
+  },
+  hydration: {
+    label: 'Hydration',
+    patterns: ['hydration', 'water'],
+    values: ['volume', 'milliliters', 'liters', 'value'],
+    aggregate: 'sum',
+  },
+  bloodPressure: {
+    label: 'Blood Pressure',
+    patterns: ['blood_pressure', 'bloodpressure', 'bp'],
+    values: ['systolic', 'diastolic', 'value'],
+    aggregate: 'avg',
+  },
+  bloodGlucose: {
+    label: 'Blood Glucose',
+    patterns: ['blood_glucose', 'bloodglucose', 'glucose'],
+    values: ['glucose', 'value'],
+    aggregate: 'avg',
+  },
+  vo2: {
+    label: 'VO2 Max',
+    patterns: ['vo2', 'oxygen_uptake'],
+    values: ['vo2', 'value'],
+    aggregate: 'avg',
+  },
+  oxygen: {
+    label: 'Oxygen Saturation',
+    patterns: ['oxygen', 'spo2', 'saturation'],
+    values: ['spo2', 'saturation', 'percentage', 'value'],
+    aggregate: 'avg',
+  },
+}
+
+function classifyMetric(table, columns) {
+  var haystack = lower(table + ' ' + columns.map(function(c) { return c.name }).join(' '))
+  var order = [
+    'hrv',
+    'restingHeartRate',
+    'respiratory',
+    'bloodPressure',
+    'bloodGlucose',
+    'vo2',
+    'oxygen',
+    'steps',
+    'sleep',
+    'weight',
+    'exercise',
+    'nutrition',
+    'hydration',
+    'heartRate',
+  ]
+  for (var i = 0; i < order.length; i++) {
+    var key = order[i]
+    if (METRICS[key].patterns.some(function(pattern) { return haystack.indexOf(pattern) !== -1 })) return key
+  }
+  return 'other'
+}
+
+function looksNumericColumn(column) {
+  var n = lower(column.name)
+  var t = lower(column.type)
+  if (/id|uuid|hash|source|package|device|time|date|zone|offset/.test(n)) return false
+  if (/int|real|float|double|numeric|decimal/.test(t)) return true
+  return /value|count|steps|bpm|rmssd|rate|weight|mass|duration|minutes|seconds|distance|calories|percent|systolic|diastolic/.test(n)
+}
+
+function findDateColumn(columns) {
+  var preferred = ['start_time', 'starttime', 'start', 'timestamp', 'time', 'date', 'end_time', 'endtime', 'created_at']
+  for (var p = 0; p < preferred.length; p++) {
+    var found = columns.find(function(c) { return lower(c.name) === preferred[p] })
+    if (found) return found
+  }
+  return columns.find(function(c) {
+    var n = lower(c.name)
+    return /(^|_)(date|time|timestamp|instant|epoch|millis|seconds)(_|$)/.test(n) && n.indexOf('timezone') === -1 && n.indexOf('duration') === -1
+  }) || null
+}
+
+function getSampleValue(db, table, column) {
+  try {
+    return execFirstValue(
+      db,
+      'SELECT ' + quoteIdent(column) + ' FROM ' + quoteIdent(table) + ' WHERE ' + quoteIdent(column) + ' IS NOT NULL LIMIT 1'
+    )
+  } catch (e) {
+    return null
+  }
+}
+
+function buildDateExpr(sample, columnName) {
+  var col = quoteIdent(columnName)
+  if (sample == null) return null
+  var asNumber = Number(sample)
+  if (!Number.isNaN(asNumber) && String(sample).trim() !== '') {
+    if (asNumber > 100000000000000000) return 'date(CAST(' + col + ' AS REAL) / 1000000000, "unixepoch")'
+    if (asNumber > 100000000000000) return 'date(CAST(' + col + ' AS REAL) / 1000000, "unixepoch")'
+    if (asNumber > 100000000000) return 'date(CAST(' + col + ' AS REAL) / 1000, "unixepoch")'
+    if (asNumber > 1000000000) return 'date(CAST(' + col + ' AS REAL), "unixepoch")'
+    return null
+  }
+  return 'date(' + col + ')'
+}
+
+function getDateSummary(db, table, dateColumn) {
+  if (!dateColumn) return null
+  var qcol = quoteIdent(dateColumn.name)
+  var summary = { column: dateColumn.name, rawRange: null, normalRange: null, daysCovered: null, recentMonths: [] }
+  try {
+    var raw = db.exec('SELECT MIN(' + qcol + '), MAX(' + qcol + ') FROM ' + quoteIdent(table) + ' WHERE ' + qcol + ' IS NOT NULL')
+    if (raw[0]) summary.rawRange = [raw[0].values[0][0], raw[0].values[0][1]]
+  } catch (e) {}
+
+  var sample = getSampleValue(db, table, dateColumn.name)
+  var dateExpr = buildDateExpr(sample, dateColumn.name)
+  if (!dateExpr) return summary
+
+  try {
+    var normalized = db.exec(
+      'SELECT MIN(' + dateExpr + '), MAX(' + dateExpr + '), COUNT(DISTINCT ' + dateExpr + ') FROM ' +
+      quoteIdent(table) + ' WHERE ' + dateExpr + ' IS NOT NULL'
+    )
+    if (normalized[0]) {
+      summary.normalRange = [normalized[0].values[0][0], normalized[0].values[0][1]]
+      summary.daysCovered = normalized[0].values[0][2]
+    }
+  } catch (e) {}
+
+  try {
+    var months = db.exec(
+      'SELECT substr(' + dateExpr + ', 1, 7) AS month, COUNT(*) AS rows FROM ' + quoteIdent(table) +
+      ' WHERE ' + dateExpr + ' IS NOT NULL GROUP BY month ORDER BY month DESC LIMIT 6'
+    )
+    if (months[0]) summary.recentMonths = months[0].values.map(function(row) {
+      return { month: row[0], rows: row[1] }
+    })
+  } catch (e) {}
+
+  summary.dateExpr = dateExpr
+  return summary
+}
+
+function getSources(db, table, columns) {
+  var sourceCol = columns.find(function(c) {
+    var n = lower(c.name)
+    return n.indexOf('source') !== -1 || n.indexOf('package') !== -1 || n.indexOf('app') !== -1 || n.indexOf('device') !== -1 || n.indexOf('client') !== -1
+  })
+  if (!sourceCol) return []
+  try {
+    var res = db.exec(
+      'SELECT DISTINCT ' + quoteIdent(sourceCol.name) + ' FROM ' + quoteIdent(table) +
+      ' WHERE ' + quoteIdent(sourceCol.name) + ' IS NOT NULL LIMIT 12'
+    )
+    if (!res[0]) return []
+    return res[0].values.map(function(row) { return row[0] }).filter(Boolean)
+  } catch (e) {
+    return []
+  }
+}
+
+function getNumericStats(db, table, columns) {
+  var numeric = columns.filter(looksNumericColumn).slice(0, 6)
+  var stats = []
+  numeric.forEach(function(column) {
+    try {
+      var col = quoteIdent(column.name)
+      var res = db.exec(
+        'SELECT COUNT(' + col + '), MIN(CAST(' + col + ' AS REAL)), AVG(CAST(' + col + ' AS REAL)), MAX(CAST(' + col + ' AS REAL)) FROM ' +
+        quoteIdent(table) + ' WHERE ' + col + ' IS NOT NULL'
+      )
+      if (res[0]) {
+        var row = res[0].values[0]
+        if (Number(row[0]) > 0) {
+          stats.push({
+            column: column.name,
+            count: Number(row[0]),
+            min: Number(row[1]),
+            avg: Number(row[2]),
+            max: Number(row[3]),
+          })
+        }
+      }
+    } catch (e) {}
+  })
+  return stats
+}
+
+function findValueColumn(metricKey, columns) {
+  var def = METRICS[metricKey]
+  if (!def) return null
+  var numeric = columns.filter(looksNumericColumn)
+  for (var i = 0; i < def.values.length; i++) {
+    var candidate = def.values[i]
+    var exact = numeric.find(function(c) { return lower(c.name) === candidate })
+    if (exact) return exact
+    var partial = numeric.find(function(c) { return lower(c.name).indexOf(candidate) !== -1 })
+    if (partial) return partial
+  }
+  return numeric[0] || null
+}
+
+function getDailyAggregate(db, table, metricKey, dateSummary, valueColumn) {
+  if (!dateSummary || !dateSummary.dateExpr || !valueColumn) return null
+  var def = METRICS[metricKey] || { aggregate: 'avg' }
+  var valueExpr = 'CAST(' + quoteIdent(valueColumn.name) + ' AS REAL)'
+  var aggregateExpr = def.aggregate === 'sum' ? 'SUM(' + valueExpr + ')' : 'AVG(' + valueExpr + ')'
+  try {
+    var res = db.exec(
+      'SELECT ' + dateSummary.dateExpr + ' AS day, ' + aggregateExpr + ' AS value FROM ' + quoteIdent(table) +
+      ' WHERE ' + dateSummary.dateExpr + ' IS NOT NULL AND ' + quoteIdent(valueColumn.name) + ' IS NOT NULL ' +
+      'GROUP BY day ORDER BY day DESC LIMIT 30'
+    )
+    if (!res[0] || !res[0].values.length) return null
+    var values = res[0].values
+      .map(function(row) { return { day: row[0], value: Number(row[1]) } })
+      .filter(function(row) { return row.day && !Number.isNaN(row.value) })
+    if (!values.length) return null
+    var avgRecent = values.reduce(function(sum, row) { return sum + row.value }, 0) / values.length
+    return {
+      column: valueColumn.name,
+      method: def.aggregate,
+      recentDays: values.length,
+      latestDay: values[0].day,
+      latestValue: values[0].value,
+      averageRecentValue: avgRecent,
+    }
+  } catch (e) {
+    return null
+  }
+}
+
+function round(value, digits) {
+  if (value == null || Number.isNaN(value)) return 'n/a'
+  var factor = Math.pow(10, digits || 1)
+  return String(Math.round(value * factor) / factor)
+}
+
+function addWarning(target, message) {
+  if (target.indexOf(message) === -1) target.push(message)
+}
+
 self.onmessage = async function(e) {
   var buffer = e.data.buffer
   var fileName = e.data.fileName
   var fileSize = e.data.fileSize
 
   try {
-    log('Step 2/4 — Loading sql.js library...', 'info', 26, 'wasm-load')
+    log('Step 2/4 - Loading sql.js library...', 'info', 26, 'wasm-load')
 
     var wasmPct = 26
     var wasmTimer = setInterval(function() {
       if (wasmPct < 43) {
         wasmPct += 1
-        var kb = Math.round((wasmPct - 26) / 17 * 2800)
-        log('Step 2/4 — Fetching WASM binary... (~' + kb + ' KB of ~2800 KB)', 'info', wasmPct, 'wasm-load')
+        log('Step 2/4 - Fetching WASM binary...', 'info', wasmPct, 'wasm-load')
       }
     }, 180)
 
@@ -39,145 +357,166 @@ self.onmessage = async function(e) {
 
     clearInterval(wasmTimer)
     var wasmMs = Date.now() - startWasm
-    log('Step 2/4 — WASM loaded in ' + (wasmMs / 1000).toFixed(1) + 's', 'info', 45, 'wasm-load')
+    log('Step 2/4 - WASM loaded in ' + (wasmMs / 1000).toFixed(1) + 's', 'info', 45, 'wasm-load')
 
-    log('Step 3/4 — Opening SQLite database...', 'info', 46, 'db-open')
+    log('Step 3/4 - Opening SQLite database...', 'info', 46, 'db-open')
     var startOpen = Date.now()
     var db = new sql.Database(new Uint8Array(buffer))
     var openMs = Date.now() - startOpen
-    log('Step 3/4 — Database opened in ' + (openMs / 1000).toFixed(1) + 's', 'info', 65, 'db-open')
+    log('Step 3/4 - Database opened in ' + (openMs / 1000).toFixed(1) + 's', 'info', 65, 'db-open')
 
-    log('Step 4/4 — Performing deep data audit...', 'info', 66)
+    log('Step 4/4 - Building structured health inventory...', 'info', 66)
     var tablesResult = db.exec("SELECT name FROM sqlite_master WHERE type='table'")
     var tables = tablesResult[0] ? tablesResult[0].values.map(function(r) { return r[0] }) : []
-    
-    var dataInventory = {
-      fileName: fileName,
-      fileSize: formatFileSize(fileSize),
-      tablesFound: tables.length,
-      metrics: {}
-    }
+    var summaries = []
+    var grouped = {}
+    var warnings = []
+    var tableErrors = []
+    var nonEmptyTables = 0
 
-    // Common health metrics and their likely table names/patterns
-    var metricMap = {
-      steps: ['steps', 'step_count', 'ActivitySamples'],
-      sleep: ['sleep', 'sleep_session', 'sleep_stage'],
-      hrv: ['hrv', 'heart_rate_variability', 'rmssd'],
-      heartRate: ['heart_rate', 'hr_samples', 'resting_heart_rate'],
-      weight: ['weight', 'body_mass'],
-      exercise: ['exercise', 'workout', 'activity_record'],
-      nutrition: ['nutrition', 'food', 'diet'],
-      respiratory: ['respiratory', 'breathing']
-    }
+    Object.keys(METRICS).forEach(function(key) { grouped[key] = [] })
+    grouped.other = []
 
     for (var i = 0; i < tables.length; i++) {
       var table = tables[i]
-      var pct = 66 + Math.round((i / tables.length) * 30)
-      log('Step 4/4 — Auditing table [' + (i + 1) + '/' + tables.length + ']: ' + table, 'info', pct)
+      var pct = 66 + Math.round((i / Math.max(1, tables.length)) * 30)
+      log('Step 4/4 - Auditing table [' + (i + 1) + '/' + tables.length + ']: ' + table, 'info', pct)
 
       try {
-        var countResult = db.exec('SELECT COUNT(*) FROM "' + table + '"')
-        var count = countResult[0] ? countResult[0].values[0][0] : 0
-        
-        var schemaResult = db.exec('PRAGMA table_info("' + table + '")')
-        var cols = schemaResult[0] ? schemaResult[0].values.map(function(c) { return { name: c[1], type: c[2] } }) : []
-        
-        var metricKey = 'other'
-        for (var key in metricMap) {
-          if (metricMap[key].some(function(p) { return table.toLowerCase().indexOf(p) !== -1 })) {
-            metricKey = key
-            break
+        var columns = getColumns(db, table)
+        var count = getCount(db, table)
+        if (count > 0) nonEmptyTables += 1
+        var metricKey = classifyMetric(table, columns)
+        var dateColumn = findDateColumn(columns)
+        var dateSummary = getDateSummary(db, table, dateColumn)
+        var sources = count > 0 ? getSources(db, table, columns) : []
+        var numericStats = count > 0 ? getNumericStats(db, table, columns) : []
+        var valueColumn = count > 0 ? findValueColumn(metricKey, columns) : null
+        var dailyAggregate = count > 0 ? getDailyAggregate(db, table, metricKey, dateSummary, valueColumn) : null
+        var tableWarnings = []
+
+        if (sources.length > 1) {
+          addWarning(tableWarnings, 'Multiple source/app/device values detected; raw totals may be duplicated.')
+          if (metricKey === 'steps') addWarning(warnings, 'Steps have multiple source hints in at least one table. Use source-prioritised totals before making claims.')
+        }
+        if ((metricKey === 'heartRate' || metricKey === 'restingHeartRate') && dateSummary && dateSummary.daysCovered) {
+          var rowsPerDay = count / Math.max(1, Number(dateSummary.daysCovered))
+          if (rowsPerDay > 48) {
+            addWarning(tableWarnings, 'High row density suggests sample-level heart data, not one clean daily resting value.')
+            addWarning(warnings, 'Heart/resting-HR tables may need daily aggregation before interpretation.')
           }
         }
-
-        if (!dataInventory.metrics[metricKey]) dataInventory.metrics[metricKey] = []
-        
-        var stats = { tableName: table, rows: count, status: count > 0 ? 'present' : 'empty' }
-        
-        if (count > 0) {
-          // Detect date ranges
-          var dateCol = cols.find(function(c) { 
-            var n = c.name.toLowerCase()
-            return n.indexOf('time') !== -1 || n.indexOf('date') !== -1 || n.indexOf('stamp') !== -1 
+        if (metricKey === 'sleep') {
+          addWarning(tableWarnings, 'Sleep stages are device estimates; unusual deep/REM proportions should be treated as data-quality questions.')
+        }
+        if (metricKey === 'weight') {
+          var zeroPercent = numericStats.find(function(s) {
+            return lower(s.column).indexOf('fat') !== -1 && s.min === 0
           })
-          
-          if (dateCol) {
-            try {
-              var rangeRes = db.exec('SELECT MIN("' + dateCol.name + '"), MAX("' + dateCol.name + '") FROM "' + table + '"')
-              if (rangeRes[0]) {
-                stats.range = [rangeRes[0].values[0][0], rangeRes[0].values[0][1]]
-              }
-            } catch(e) {}
-          }
-
-          // Source detection (for deduplication audit)
-          var sourceCol = cols.find(function(c) { return c.name.toLowerCase().indexOf('source') !== -1 || c.name.toLowerCase().indexOf('package') !== -1 })
-          if (sourceCol) {
-            try {
-              var sourceRes = db.exec('SELECT DISTINCT "' + sourceCol.name + '" FROM "' + table + '" LIMIT 10')
-              if (sourceRes[0]) {
-                stats.sources = sourceRes[0].values.map(function(v) { return v[0] })
-                if (stats.sources.length > 1) {
-                  stats.qualityWarning = "Possible duplicate sources: " + stats.sources.join(', ')
-                }
-              }
-            } catch(e) {}
-          }
-
-          // Numeric averages for key columns
-          var numCols = cols.filter(function(c) {
-            var t = c.type.toUpperCase()
-            var n = c.name.toLowerCase()
-            return (t.indexOf('INT') !== -1 || t.indexOf('FLOAT') !== -1 || t.indexOf('REAL') !== -1) && n.indexOf('id') === -1
-          }).slice(0, 3)
-
-          if (numCols.length > 0) {
-            var aggQueries = numCols.map(function(c) { return 'AVG("' + c.name + '") as avg_' + c.name }).join(', ')
-            try {
-              var aggRes = db.exec('SELECT ' + aggQueries + ' FROM "' + table + '"')
-              if (aggRes[0]) {
-                stats.averages = {}
-                aggRes[0].columns.forEach(function(col, ci) {
-                  stats.averages[col] = aggRes[0].values[0][ci]
-                })
-              }
-            } catch(e) {}
-          }
+          if (zeroPercent) addWarning(tableWarnings, 'A body-fat column contains zero values; zeros may mean missing data rather than true 0%.')
         }
 
-        dataInventory.metrics[metricKey].push(stats)
-      } catch (e) {
-        if (!dataInventory.errors) dataInventory.errors = []
-        dataInventory.errors.push(table + ": " + e.message)
+        var summary = {
+          tableName: table,
+          metricKey: metricKey,
+          rows: count,
+          status: count > 0 ? 'present' : 'empty',
+          columns: columns.map(function(c) { return c.name }),
+          date: dateSummary,
+          sources: sources,
+          numericStats: numericStats,
+          dailyAggregate: dailyAggregate,
+          warnings: tableWarnings,
+        }
+        summaries.push(summary)
+        grouped[metricKey].push(summary)
+      } catch (err) {
+        tableErrors.push(table + ': ' + err.message)
       }
     }
 
     db.close()
-    
-    // Final report construction
-    var report = "DATA PACK: STRUCTURED HEALTH INVENTORY\n"
-    report += "File: " + dataInventory.fileName + " (" + dataInventory.fileSize + ")\n"
-    report += "Tables Found: " + dataInventory.tablesFound + "\n\n"
-    
-    for (var m in dataInventory.metrics) {
-      report += "=== METRIC: " + m.toUpperCase() + " ===\n"
-      dataInventory.metrics[m].forEach(function(s) {
-        report += "- Table: " + s.tableName + " | Rows: " + s.rows.toLocaleString() + " | Status: " + s.status + "\n"
-        if (s.range) report += "  Range: " + s.range[0] + " to " + s.range[1] + "\n"
-        if (s.sources) report += "  Sources: " + s.sources.join(', ') + "\n"
-        if (s.qualityWarning) report += "  !! QUALITY WARNING: " + s.qualityWarning + "\n"
-        if (s.averages) {
-          report += "  Averages: " + Object.keys(s.averages).map(function(k) { 
-            return k.replace('avg_', '') + ": " + (typeof s.averages[k] === 'number' ? s.averages[k].toFixed(2) : s.averages[k])
-          }).join(', ') + "\n"
-        }
-      })
-      report += "\n"
+
+    var important = ['steps', 'sleep', 'hrv', 'restingHeartRate', 'respiratory', 'weight', 'exercise', 'nutrition', 'hydration', 'bloodPressure', 'bloodGlucose', 'vo2']
+    important.forEach(function(metricKey) {
+      var rows = (grouped[metricKey] || []).reduce(function(sum, item) { return sum + item.rows }, 0)
+      if (rows === 0) {
+        addWarning(warnings, METRICS[metricKey].label + ' is not safely available from this file (no rows found in matched tables).')
+      }
+    })
+
+    var report = 'DATA PACK: STRUCTURED HEALTH INVENTORY\n'
+    report += 'File: ' + fileName + ' (' + formatFileSize(fileSize) + ')\n'
+    report += 'Parser: SQLite worker aggregate audit\n'
+    report += 'Tables Found: ' + tables.length + '\n'
+    report += 'Tables With Data: ' + nonEmptyTables + '\n'
+    report += 'Tables Empty: ' + (tables.length - nonEmptyTables) + '\n\n'
+
+    report += 'INTERPRETATION RULES FOR AI\n'
+    report += '- Treat row counts, date ranges, source hints, and warnings as evidence.\n'
+    report += '- Do not claim a metric is absent if this Data Pack says rows are present.\n'
+    report += '- If a metric has matched tables but 0 rows, say the table exists but contains no records.\n'
+    report += '- Do not diagnose. Use medical-boundary language for pathology, ECG, symptoms, medications, or abnormal clinical findings.\n'
+    report += '- If source overlap is flagged, avoid raw totals until a priority source is chosen.\n\n'
+
+    report += 'DATA QUALITY WARNINGS\n'
+    if (warnings.length) {
+      warnings.forEach(function(w) { report += '- ' + w + '\n' })
+    } else {
+      report += '- No broad warnings found by the deterministic parser.\n'
     }
+    if (tableErrors.length) {
+      report += '- Parser errors in ' + tableErrors.length + ' table(s): ' + tableErrors.slice(0, 6).join('; ') + '\n'
+    }
+    report += '\n'
 
-    log('Done — deep audit complete', 'success', 100)
+    important.concat(['oxygen', 'heartRate', 'other']).forEach(function(metricKey) {
+      var entries = grouped[metricKey] || []
+      if (!entries.length) return
+      var label = METRICS[metricKey] ? METRICS[metricKey].label : 'Other Tables'
+      var totalRows = entries.reduce(function(sum, item) { return sum + item.rows }, 0)
+      report += '=== METRIC: ' + label.toUpperCase() + ' ===\n'
+      report += 'Matched tables: ' + entries.length + ' | Total rows: ' + totalRows.toLocaleString() + '\n'
+
+      entries
+        .sort(function(a, b) { return b.rows - a.rows })
+        .slice(0, 10)
+        .forEach(function(s) {
+          report += '- Table: ' + s.tableName + ' | Rows: ' + s.rows.toLocaleString() + ' | Status: ' + s.status + '\n'
+          if (s.date) {
+            report += '  Date column: ' + s.date.column + '\n'
+            if (s.date.normalRange && s.date.normalRange[0]) {
+              report += '  Normalized range: ' + s.date.normalRange[0] + ' to ' + s.date.normalRange[1] + ' | Days covered: ' + (s.date.daysCovered || 'n/a') + '\n'
+            } else if (s.date.rawRange) {
+              report += '  Raw range: ' + s.date.rawRange[0] + ' to ' + s.date.rawRange[1] + '\n'
+            }
+            if (s.date.recentMonths && s.date.recentMonths.length) {
+              report += '  Recent row density by month: ' + s.date.recentMonths.map(function(m) { return m.month + '=' + m.rows }).join(', ') + '\n'
+            }
+          }
+          if (s.sources && s.sources.length) report += '  Source hints: ' + s.sources.join(', ') + '\n'
+          if (s.dailyAggregate) {
+            report += '  Recent daily aggregate: ' + s.dailyAggregate.method + '(' + s.dailyAggregate.column + ') over ' + s.dailyAggregate.recentDays + ' recent days; latest ' + s.dailyAggregate.latestDay + '=' + round(s.dailyAggregate.latestValue, 1) + '; recent avg=' + round(s.dailyAggregate.averageRecentValue, 1) + '\n'
+          }
+          if (s.numericStats && s.numericStats.length) {
+            report += '  Numeric summaries: ' + s.numericStats.slice(0, 4).map(function(stat) {
+              return stat.column + ' n=' + stat.count + ' min=' + round(stat.min, 1) + ' avg=' + round(stat.avg, 1) + ' max=' + round(stat.max, 1)
+            }).join(' | ') + '\n'
+          }
+          if (s.columns && s.columns.length) report += '  Columns: ' + s.columns.slice(0, 18).join(', ') + (s.columns.length > 18 ? ', ...' : '') + '\n'
+          if (s.warnings && s.warnings.length) s.warnings.forEach(function(w) { report += '  Warning: ' + w + '\n' })
+        })
+      report += '\n'
+    })
+
+    report += 'PARSER LIMITATIONS\n'
+    report += '- This is a deterministic SQLite inventory, not a clinical analysis.\n'
+    report += '- Date conversion is best-effort for ISO strings and Unix seconds/milliseconds/microseconds/nanoseconds.\n'
+    report += '- Daily aggregates are candidate summaries based on likely value columns; source-prioritised deduplication still needs the normalisation layer.\n'
+    report += '- Raw sample rows are intentionally not included to avoid sending binary/noisy personal data to the AI.\n'
+
+    log('Done - structured health inventory complete', 'success', 100)
     self.postMessage({ type: 'done', content: report })
-
   } catch (err) {
     log('Audit failed: ' + err.message, 'error', 100)
     self.postMessage({ type: 'error', message: err.message })

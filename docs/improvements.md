@@ -44,7 +44,19 @@ This document lists 10 actionable improvements to HealthLens, with suggested nex
    - Add staged connectors: Drive folder watcher (serverless), Fitbit OAuth, Withings OAuth.
    - Sync endpoint `/api/sync/health-connect` and fake sync script implemented.
 
+Current progress
+- SQLite parsing now runs through a worker and produces an evidence-grounded Data Pack instead of raw sample rows.
+- Provider errors now include the actual HTTP status/message and practical hints.
+- Supabase sync/dashboard plumbing exists; sync endpoint positive-path tests now cover success, idempotency, zero values, and summary-insert cleanup.
+- Supabase dashboard summaries now have test coverage for empty data, zero values, mixed warning payloads, and chart-ready rows.
+- Synced Supabase rows can now be converted into a Data Pack for the existing AI analysis flow.
+- Completed analyses now export Markdown, structured JSON evidence bundles, and browser print/save-as-PDF output.
+- Android scaffold can now send a manual fake daily summary payload to the production sync endpoint for on-device pipe testing.
+- In-app settings now include local session/import clearing and provider-key clearing.
+- `npm run doctor` now automates local test/build, live app checks, provider checks when keys are present, and optional fake production sync/cleanup.
+- GitHub Actions can now run the doctor manually or daily, using repository secrets if configured.
+- Admin self-test coverage now uses a mocked Supabase admin client for positive-path insert/query/idempotency/cleanup checks.
+- Playwright browser smoke tests now check Supabase dashboard chart rendering on desktop and mobile with mocked Supabase data.
+
 Next steps
-- Create `docs/improvements.md` (this file).
-- Update `README.md` and `docs/plan.md` to reference this roadmap.
-- Implement the Health Connect importer as the first code task.
+- Build the real Android Health Connect reader after the web sync loop is proven.

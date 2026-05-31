@@ -9,11 +9,11 @@ const PROVIDERS = [
     badgeClass: 'text-jade',
     placeholder: 'gsk_...',
     keyUrl: 'https://console.groq.com/keys',
-    note: 'Free tier available — fast Llama models.',
+    note: 'Free tier available with fast Llama models.',
     models: [
       { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (recommended)' },
       { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (fastest)' },
-      { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+      { id: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout' },
     ],
   },
   {
@@ -23,11 +23,11 @@ const PROVIDERS = [
     badgeClass: 'text-jade',
     placeholder: 'sk-or-...',
     keyUrl: 'https://openrouter.ai/keys',
-    note: 'Many free models available. Also supports paid models.',
+    note: 'Many free models available. Paid models depend on account credits.',
     models: [
       { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free)' },
-      { id: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B (free)' },
-      { id: 'google/gemma-3-27b-it:free', label: 'Gemma 3 27B (free)' },
+      { id: 'qwen/qwen3-next-80b-a3b-instruct:free', label: 'Qwen 3 Next 80B (free)' },
+      { id: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B (free)' },
       { id: 'anthropic/claude-3-5-sonnet', label: 'Claude 3.5 Sonnet (paid)' },
     ],
   },
@@ -40,8 +40,8 @@ const PROVIDERS = [
     keyUrl: 'https://console.anthropic.com/settings/keys',
     note: 'Requires a paid Anthropic account.',
     models: [
-      { id: 'claude-opus-4-5', label: 'Claude Opus 4.5 (best quality)' },
       { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5 (balanced)' },
+      { id: 'claude-opus-4-5', label: 'Claude Opus 4.5 (best quality)' },
       { id: 'claude-haiku-3-5', label: 'Claude Haiku 3.5 (fastest/cheapest)' },
     ],
   },
@@ -49,8 +49,8 @@ const PROVIDERS = [
 
 export default function ProviderSelector({ onSubmit }) {
   const [provider, setProvider] = useState(PROVIDERS[0])
-  const [model, setModel] = useState(PROVIDERS[0].models[0].id)
-  const [key, setKey] = useState('')
+  const [model, setModel] = useState(() => localStorage.getItem(`jha_model_${PROVIDERS[0].id}`) || PROVIDERS[0].models[0].id)
+  const [key, setKey] = useState(() => localStorage.getItem(`jha_key_${PROVIDERS[0].id}`) || '')
   const [show, setShow] = useState(false)
   const [error, setError] = useState('')
   const [testing, setTesting] = useState(false)
@@ -58,7 +58,7 @@ export default function ProviderSelector({ onSubmit }) {
 
   const handleProviderChange = (p) => {
     setProvider(p)
-    setModel(p.models[0].id)
+    setModel(localStorage.getItem(`jha_model_${p.id}`) || p.models[0].id)
     setKey(localStorage.getItem(`jha_key_${p.id}`) || '')
     setError('')
     setTestResult(null)
@@ -74,10 +74,14 @@ export default function ProviderSelector({ onSubmit }) {
 
   const handleTest = async () => {
     const err = validate(key.trim())
-    if (err) { setError(err); return }
-    
+    if (err) {
+      setError(err)
+      return
+    }
+
     setTesting(true)
     setTestResult(null)
+    setError('')
     const res = await checkHealth({ provider: provider.id, model, apiKey: key.trim() })
     setTesting(false)
     setTestResult(res)
@@ -87,8 +91,12 @@ export default function ProviderSelector({ onSubmit }) {
   const handleSubmit = (e) => {
     e.preventDefault()
     const err = validate(key.trim())
-    if (err) { setError(err); return }
+    if (err) {
+      setError(err)
+      return
+    }
     localStorage.setItem(`jha_key_${provider.id}`, key.trim())
+    localStorage.setItem(`jha_model_${provider.id}`, model)
     onSubmit({ provider: provider.id, model, apiKey: key.trim() })
   }
 
@@ -98,11 +106,10 @@ export default function ProviderSelector({ onSubmit }) {
         <div className="space-y-1">
           <h2 className="font-display font-semibold text-white text-lg">Connect an AI provider</h2>
           <p className="text-slate-ui text-sm leading-relaxed">
-            Your API key is stored locally in your browser only — never sent anywhere except directly to the provider.
+            Your API key is stored locally in your browser only and sent directly to the selected provider.
           </p>
         </div>
 
-        {/* Provider tabs */}
         <div className="grid grid-cols-3 gap-2">
           {PROVIDERS.map(p => (
             <button
@@ -121,21 +128,23 @@ export default function ProviderSelector({ onSubmit }) {
           ))}
         </div>
 
-        {/* Note */}
         <p className="text-xs text-slate-ui bg-ink rounded-lg px-3 py-2">
           {provider.note}{' '}
           <a href={provider.keyUrl} target="_blank" rel="noreferrer" className="text-jade hover:underline">
-            Get API key →
+            Get API key
           </a>
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Model select */}
           <div className="space-y-1.5">
             <label className="text-xs text-slate-ui font-medium uppercase tracking-wider">Model</label>
             <select
               value={model}
-              onChange={e => { setModel(e.target.value); setTestResult(null) }}
+              onChange={e => {
+                setModel(e.target.value)
+                setTestResult(null)
+                setError('')
+              }}
               className="w-full bg-ink border border-slate-border focus:border-jade/60 rounded-xl px-4 py-3 text-white text-sm outline-none transition-colors appearance-none"
             >
               {provider.models.map(m => (
@@ -144,14 +153,17 @@ export default function ProviderSelector({ onSubmit }) {
             </select>
           </div>
 
-          {/* API key */}
           <div className="space-y-1.5">
             <label className="text-xs text-slate-ui font-medium uppercase tracking-wider">API Key</label>
             <div className="relative">
               <input
                 type={show ? 'text' : 'password'}
                 value={key}
-                onChange={e => { setKey(e.target.value); setError(''); setTestResult(null) }}
+                onChange={e => {
+                  setKey(e.target.value)
+                  setError('')
+                  setTestResult(null)
+                }}
                 placeholder={provider.placeholder}
                 className="w-full bg-ink border border-slate-border focus:border-jade/60 rounded-xl px-4 py-3 text-white font-mono text-sm outline-none transition-colors pr-12 placeholder:text-slate-border"
                 autoComplete="off"
@@ -164,8 +176,8 @@ export default function ProviderSelector({ onSubmit }) {
                 {show ? 'hide' : 'show'}
               </button>
             </div>
-            {error && <p className="text-xs text-crimson-health">{error}</p>}
-            {testResult?.ok && <p className="text-xs text-jade">✓ Connection successful!</p>}
+            {error && <p className="text-xs text-crimson-health whitespace-pre-wrap">{error}</p>}
+            {testResult?.ok && <p className="text-xs text-jade">{testResult.message || 'Connection successful.'}</p>}
           </div>
 
           <div className="flex gap-2">
@@ -182,7 +194,7 @@ export default function ProviderSelector({ onSubmit }) {
               disabled={!key.trim() || testing}
               className="flex-[2] bg-jade hover:bg-jade-dark disabled:opacity-40 disabled:cursor-not-allowed text-ink-DEFAULT font-display font-semibold py-3 rounded-xl transition-colors text-sm"
             >
-              Continue →
+              Continue
             </button>
           </div>
         </form>
@@ -196,7 +208,7 @@ export default function ProviderSelector({ onSubmit }) {
         </div>
 
         <p className="text-xs text-slate-ui/60 text-center">
-          🔒 Key stays in your browser · ⚕️ Not medical advice · 🇦🇺 Plain English output
+          Key stays in your browser. Not medical advice. Plain English output.
         </p>
       </div>
     </div>

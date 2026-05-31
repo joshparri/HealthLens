@@ -26,7 +26,7 @@
             android:id="@+id/summaryText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Android Health Connect sync scaffold with a manual Sync now button and a future data pipeline to Supabase."
+            android:text="Manual test sender for the HealthLens sync endpoint. Real Health Connect reads are the next implementation step."
             android:textColor="#E2E8F0"
             android:textSize="16sp"
             android:lineSpacingExtra="4dp"
@@ -41,15 +41,39 @@
             android:textColor="#94A3B8"
             android:layout_marginBottom="8dp" />
 
-        <TextView
-            android:id="@+id/endpointText"
+        <EditText
+            android:id="@+id/endpointInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#A5B4FC"
             android:textSize="14sp"
             android:background="#0F172A"
             android:padding="14dp"
+            android:singleLine="true"
             android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:id="@+id/tokenLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Sync token"
+            android:textSize="14sp"
+            android:textColor="#94A3B8"
+            android:layout_marginBottom="8dp" />
+
+        <EditText
+            android:id="@+id/tokenInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Paste HEALTHLENS_SYNC_SECRET on-device"
+            android:textColor="#E2E8F0"
+            android:textColorHint="#64748B"
+            android:textSize="14sp"
+            android:inputType="textPassword"
+            android:background="#0F172A"
+            android:padding="14dp"
+            android:singleLine="true"
+            android:layout_marginBottom="16dp" />
 
         <Button
             android:id="@+id/syncButton"
@@ -59,6 +83,16 @@
             android:textColor="#FFFFFF"
             android:backgroundTint="#22C55E"
             android:padding="14dp" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ready."
+            android:textColor="#94A3B8"
+            android:textSize="14sp"
+            android:lineSpacingExtra="4dp"
+            android:layout_marginTop="16dp" />
 
     </LinearLayout>
 </ScrollView>

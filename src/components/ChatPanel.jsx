@@ -148,7 +148,7 @@ export default function ChatPanel({ apiKey, provider = 'anthropic', model, histo
       )}
 
       {error && (
-        <div className="px-4 py-2 bg-crimson-glow border-t border-crimson-health/20 text-crimson-health text-xs">
+        <div className="px-4 py-2 bg-crimson-glow border-t border-crimson-health/20 text-crimson-health text-xs whitespace-pre-wrap">
           {error}
         </div>
       )}

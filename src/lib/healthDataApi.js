@@ -65,7 +65,7 @@ export async function getLatestSyncStatus() {
     .select('id,user_id,device_id_hash,source,sync_type,date_range_start,date_range_end,started_at,completed_at,status,record_count,app_version')
     .order('completed_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   return normalizeResult(response)
 }

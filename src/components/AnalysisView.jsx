@@ -1,9 +1,14 @@
+import { useState, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 export default function AnalysisView({ result, streaming }) {
+  const [copied, setStreaming] = useState(false)
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(result).catch(() => {})
+    navigator.clipboard.writeText(result)
+    setStreaming(true)
+    setTimeout(() => setStreaming(false), 2000)
   }
 
   const handleDownload = (type = 'md') => {
@@ -68,7 +73,7 @@ export default function AnalysisView({ result, streaming }) {
               onClick={handleCopy}
               className="text-xs text-slate-ui hover:text-white border border-slate-border hover:border-jade/40 px-2.5 py-1 rounded-lg transition-all"
             >
-              Copy
+              {copied ? 'Copied!' : 'Copy'}
             </button>
             <div className="flex rounded-lg overflow-hidden border border-slate-border">
               <button
@@ -89,32 +94,16 @@ export default function AnalysisView({ result, streaming }) {
       </div>
 
       {/* Content */}
-      <div className="p-6 max-h-[70vh] overflow-y-auto">
-        {!result && streaming && (
-          <div className="flex items-center gap-3 py-8 justify-center">
-            <div className="w-6 h-6 border-2 border-jade/30 border-t-jade rounded-full spinner"></div>
-            <span className="text-slate-ui text-sm">Loading analysis...</span>
-          </div>
-        )}
-
-        {result && (
-          <div className={`prose-health ${streaming ? 'cursor-blink' : ''}`}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {result}
-            </ReactMarkdown>
-          </div>
-        )}
-      </div>
-
-      {/* Clinical caution footer */}
-      {result && !streaming && (
-        <div className="px-5 py-3 border-t border-slate-border bg-amber-glow/30 flex gap-2 items-start">
-          <span className="text-amber-health text-sm flex-shrink-0">⚕️</span>
-          <p className="text-xs text-amber-health/80 leading-relaxed">
-            This analysis is for personal reflection only — not medical advice. Please discuss any clinical findings, symptoms, or concerns with your GP or a qualified health professional.
-          </p>
+      <div className="p-6 sm:p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+        <div className="prose-health prose-slate max-w-none animate-fade-in">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {result}
+          </ReactMarkdown>
+          {streaming && (
+            <div className="w-1.5 h-4 bg-jade/40 inline-block ml-1 animate-pulse align-middle"></div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

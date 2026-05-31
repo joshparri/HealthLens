@@ -1,7 +1,5 @@
 import supabaseAdmin from '../lib/supabaseServer.js'
 
-const ADMIN_SECRET = process.env.HEALTHLENS_SYNC_SECRET
-
 function getAuthToken(req) {
   const auth = req.headers['authorization'] || req.headers['Authorization']
   if (!auth || typeof auth !== 'string') return null
@@ -36,12 +34,17 @@ function buildResponse() {
   }
 }
 
-export default async function handler(req, res) {
+export function createAdminSelfTestHandler({ supabaseClient = supabaseAdmin, env = process.env } = {}) {
+  return (req, res) => runAdminSelfTest(req, res, { supabaseClient, env })
+}
+
+async function runAdminSelfTest(req, res, { supabaseClient, env }) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  if (!ADMIN_SECRET) {
+  const adminSecret = env.HEALTHLENS_SYNC_SECRET
+  if (!adminSecret) {
     return res.status(500).json({ error: 'Server misconfigured: missing HEALTHLENS_SYNC_SECRET' })
   }
 
@@ -49,17 +52,18 @@ export default async function handler(req, res) {
   if (!token) {
     return res.status(401).json({ error: 'Missing Authorization header' })
   }
-  if (token !== ADMIN_SECRET) {
+  if (token !== adminSecret) {
     return res.status(403).json({ error: 'Invalid admin token' })
   }
 
   const result = buildResponse()
-  const user_id = process.env.DEFAULT_USER_ID || 'local-user'
+  const user_id = env.DEFAULT_USER_ID || 'local-user'
   const importKey = 'self-test-device-001'
   const importDate = '2026-05-30'
   const serviceRoleAvailable = Boolean(
-    process.env.SUPABASE_SERVICE_ROLE_KEY &&
-    (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL)
+    supabaseClient &&
+    env.SUPABASE_SERVICE_ROLE_KEY &&
+    (env.SUPABASE_URL || env.VITE_SUPABASE_URL)
   )
   result.checks.serviceRoleAvailable = serviceRoleAvailable
 
@@ -74,7 +78,7 @@ export default async function handler(req, res) {
 
   try {
     if (cleanupImportId || cleanupDeviceIdHash) {
-      const importQuery = supabaseAdmin.from('health_sync_imports').select('id,user_id,device_id_hash,date_range_start,date_range_end').limit(1)
+      const importQuery = supabaseClient.from('health_sync_imports').select('id,user_id,device_id_hash,date_range_start,date_range_end').limit(1)
       if (cleanupImportId) {
         importQuery.eq('id', cleanupImportId)
       }
@@ -110,7 +114,7 @@ export default async function handler(req, res) {
       const importIds = importsToDelete.map(row => row.id)
       result.checks.queryImport = true
 
-      const { data: summaryRows, error: summaryRowsError } = await supabaseAdmin
+      const { data: summaryRows, error: summaryRowsError } = await supabaseClient
         .from('daily_health_summary')
         .select('id,import_id,date,user_id')
         .in('import_id', importIds)
@@ -121,7 +125,7 @@ export default async function handler(req, res) {
         result.checks.querySummary = true
       }
 
-      const { data: deletedSummary, error: deleteSummaryError } = await supabaseAdmin
+      const { data: deletedSummary, error: deleteSummaryError } = await supabaseClient
         .from('daily_health_summary')
         .delete()
         .select()
@@ -133,7 +137,7 @@ export default async function handler(req, res) {
         result.deletedRows.daily_health_summary = Array.isArray(deletedSummary) ? deletedSummary.length : 0
       }
 
-      const { data: deletedImport, error: deleteImportError } = await supabaseAdmin
+      const { data: deletedImport, error: deleteImportError } = await supabaseClient
         .from('health_sync_imports')
         .delete()
         .select()
@@ -165,7 +169,7 @@ export default async function handler(req, res) {
       device_id_hash: importKey,
     }
 
-    const { data: importRow, error: importError } = await supabaseAdmin
+    const { data: importRow, error: importError } = await supabaseClient
       .from('health_sync_imports')
       .insert(importPayload)
       .select()
@@ -200,7 +204,7 @@ export default async function handler(req, res) {
       import_id: importRow.id,
     }
 
-    const { data: summaryRow, error: summaryError } = await supabaseAdmin
+    const { data: summaryRow, error: summaryError } = await supabaseClient
       .from('daily_health_summary')
       .insert(summaryPayload)
       .select()
@@ -208,14 +212,14 @@ export default async function handler(req, res) {
 
     if (summaryError) {
       result.warnings.push('Summary insert failed: ' + summaryError.message)
-      await supabaseAdmin.from('health_sync_imports').delete().eq('id', importRow.id)
+      await supabaseClient.from('health_sync_imports').delete().eq('id', importRow.id)
       return res.status(500).json({ ...result, error: 'Failed to insert summary row' })
     }
 
     result.checks.insertSummary = true
     result.createdRows.daily_health_summary = 1
 
-    const { data: importQuery, error: importQueryError } = await supabaseAdmin
+    const { data: importQuery, error: importQueryError } = await supabaseClient
       .from('health_sync_imports')
       .select('id, user_id, device_id_hash, date_range_start, date_range_end')
       .eq('id', importRow.id)
@@ -227,7 +231,7 @@ export default async function handler(req, res) {
       result.checks.queryImport = true
     }
 
-    const { data: summaryQuery, error: summaryQueryError } = await supabaseAdmin
+    const { data: summaryQuery, error: summaryQueryError } = await supabaseClient
       .from('daily_health_summary')
       .select('id, user_id, date, import_id')
       .eq('import_id', importRow.id)
@@ -238,7 +242,7 @@ export default async function handler(req, res) {
       result.checks.querySummary = true
     }
 
-    const { error: duplicateError } = await supabaseAdmin
+    const { error: duplicateError } = await supabaseClient
       .from('health_sync_imports')
       .insert(importPayload)
       .select()
@@ -246,7 +250,7 @@ export default async function handler(req, res) {
 
     result.checks.idempotency = Boolean(duplicateError && /unique/i.test(duplicateError.message))
 
-    const { data: deletedSummary, error: deleteSummaryError } = await supabaseAdmin
+    const { data: deletedSummary, error: deleteSummaryError } = await supabaseClient
       .from('daily_health_summary')
       .delete()
       .select()
@@ -258,7 +262,7 @@ export default async function handler(req, res) {
       result.deletedRows.daily_health_summary = Array.isArray(deletedSummary) ? deletedSummary.length : 0
     }
 
-    const { data: deletedImport, error: deleteImportError } = await supabaseAdmin
+    const { data: deletedImport, error: deleteImportError } = await supabaseClient
       .from('health_sync_imports')
       .delete()
       .select()
@@ -278,3 +282,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ ...result, error: 'Unexpected error', warnings: [...result.warnings, String(error.message || error)] })
   }
 }
+
+export default createAdminSelfTestHandler()

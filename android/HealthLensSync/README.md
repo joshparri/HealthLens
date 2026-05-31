@@ -5,7 +5,7 @@ This is a minimal Android Kotlin scaffold for the future HealthLens Android Heal
 ## What it includes
 
 - Minimal Android Studio / Gradle app structure
-- Kotlin `MainActivity` with a manual `Sync now` placeholder
+- Kotlin `MainActivity` with a manual `Sync now` test sender
 - Health Connect permission list and planned metrics
 - Default sync endpoint configured as:
   `https://health-lens-rust.vercel.app/api/sync/health-connect`
@@ -91,9 +91,20 @@ The sync endpoint expects a JSON payload like:
 }
 ```
 
-## Manual sync placeholder
+## Manual sync test sender
 
-The current scaffold includes a `Sync now` button in `MainActivity.kt` that is intentionally non-functional until Health Connect integration is built.
+The current app can send one fake Android-style daily summary payload to the HealthLens sync endpoint.
+
+It requires the sync token to be pasted on-device. Do not commit the token to this repo.
+
+This is still not real Health Connect data. It exists to prove:
+
+- Android app -> Vercel endpoint
+- bearer auth
+- Supabase insert/idempotency
+- dashboard update
+
+The next Android step is replacing the fake payload builder with Health Connect aggregate reads.
 
 ## Default endpoint
 

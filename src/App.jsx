@@ -12,9 +12,11 @@ import SupabaseStatus from './components/SupabaseStatus.jsx'
 import SyncStatus from './components/SyncStatus.jsx'
 import SupabaseDashboard from './components/SupabaseDashboard.jsx'
 import HistoryView from './components/HistoryView.jsx'
+import SettingsPanel from './components/SettingsPanel.jsx'
 import { parseFile } from './lib/fileParser.js'
 import { runAnalysis } from './lib/claudeApi.js'
 import { isSupabaseConfigured, getDailySummaries, getLatestSyncStatus, getSyncImports, getMetricAvailability } from './lib/healthDataApi.js'
+import { buildSyncedDataPack } from './lib/syncedDataPack.js'
 import { saveAnalysis } from './lib/db.js'
 
 const STAGES = { SETUP: 'setup', UPLOAD: 'upload', ANALYSE: 'analyse', RESULT: 'result' }
@@ -43,7 +45,7 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState([])
   const [showChat, setShowChat] = useState(false)
   const [showCheckIn, setShowCheckIn] = useState(false)
-  const [activeTab, setActiveTab] = useState('upload') // upload, sources, checkin, history
+  const [activeTab, setActiveTab] = useState('upload') // upload, sources, checkin, history, settings
 
   const [supabaseLoading, setSupabaseLoading] = useState(false)
   const [supabaseError, setSupabaseError] = useState('')
@@ -140,6 +142,21 @@ export default function App() {
     setStage(STAGES.ANALYSE)
   }, [])
 
+  const handleUseSyncedDataForAnalysis = useCallback(() => {
+    const virtualFile = buildSyncedDataPack(supabaseSummaries, { selectedDays })
+    if (!supabaseSummaries.length) return
+    setParsedFiles(prev => {
+      const withoutPrevious = prev.filter(file => file.type !== 'supabase')
+      return [...withoutPrevious, virtualFile]
+    })
+    setFiles(prev => {
+      const withoutPrevious = prev.filter(file => file.type !== 'supabase')
+      return [...withoutPrevious, { name: virtualFile.name, size: virtualFile.size, type: 'supabase' }]
+    })
+    setActiveTab('upload')
+    setStage(STAGES.ANALYSE)
+  }, [selectedDays, supabaseSummaries])
+
   const removeFile = useCallback((idx) => {
     setFiles(prev => prev.filter((_, i) => i !== idx))
     setParsedFiles(prev => prev.filter((_, i) => i !== idx))
@@ -185,80 +202,20 @@ export default function App() {
     })
   }, [connection, parsedFiles, selectedModes, customQuestion])
 
-  const handleReset = useCallback(() => {
-    setFiles([])
-    setParsedFiles([])
-    setAnalysisResult('')
-    setChatHistory([])
-    setShowChat(false)
-    setError('')
-    setStage(connection ? STAGES.UPLOAD : STAGES.SETUP)
-  }, [connection])
-
-  const handleDisconnect = useCallback(() => {
-    setConnection(null)
-    setStage(STAGES.SETUP)
-    setFiles([])
-    setParsedFiles([])
-    setAnalysisResult('')
-  }, [])
-
-  const dataContext = parsedFiles.map(f => f.summary).join('\n\n---\n\n')
-
   return (
-    <div className="min-h-screen bg-ink relative z-10">
-      <Header
-        onReset={stage !== STAGES.SETUP && stage !== STAGES.UPLOAD ? handleReset : null}
-        connection={connection}
-        onDisconnect={handleDisconnect}
+    <div className="min-h-screen bg-ink text-white selection:bg-jade/30">
+      <Header 
+        onSettings={() => setActiveTab('settings')} 
+        isConfigured={!!connection} 
       />
 
-      <main className="max-w-5xl mx-auto px-4 pb-24">
-        {isSupabaseConfigured && (
-          <div className="animate-slide-up pt-8 space-y-6">
-            <SupabaseStatus
-              configured={isSupabaseConfigured}
-              loading={supabaseLoading}
-              error={supabaseError}
-              latestImport={latestSyncImport}
-              summariesCount={supabaseSummaries.length}
-              onRefresh={() => refreshSupabaseData(selectedDays)}
-            />
-
-            <div className="grid gap-6 xl:grid-cols-[minmax(280px,360px)_1fr]">
-              <SyncStatus latestImport={latestSyncImport} recentImports={recentImports} loading={supabaseLoading} />
-              <SupabaseDashboard summaries={supabaseSummaries} selectedDays={selectedDays} onSelectDays={setSelectedDays} />
-            </div>
-          </div>
-        )}
-
-        {/* Provider setup */}
-        {stage === STAGES.SETUP && (
-          <div className="animate-slide-up">
-            <div className="text-center pt-16 pb-10">
-              <div className="inline-flex items-center gap-2 bg-jade-glow border border-jade/20 rounded-full px-4 py-1.5 mb-6">
-                <span className="w-2 h-2 rounded-full bg-jade animate-pulse-slow inline-block"></span>
-                <span className="text-jade text-sm font-mono tracking-wider">NOT MEDICAL ADVICE</span>
-              </div>
-              <h1 className="font-display text-4xl font-bold text-white mb-3 leading-tight">
-                Health Data<br/>
-                <span className="text-jade">Analyser</span>
-              </h1>
-              <p className="text-slate-ui text-base max-w-md mx-auto leading-relaxed">
-                Upload your wearable exports, pathology reports, and health CSVs.<br/>
-                Get deep, honest AI analysis — for personal reflection only.
-              </p>
-            </div>
-            <ProviderSelector onSubmit={handleConnect} />
-          </div>
-        )}
-
-        {/* Upload + mode select */}
-        {(stage === STAGES.UPLOAD || stage === STAGES.ANALYSE) && (
-          <div className="animate-slide-up pt-8 space-y-6">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+          {/* Sidebar */}
+          <div className="lg:col-span-4 space-y-6">
             <div className="flex items-center justify-between border-b border-slate-border/50 pb-2">
               <div className="flex gap-4">
-                {['upload', 'sources', 'checkin', 'history'].map(tab => (
+                {['upload', 'sources', 'checkin', 'history', 'settings'].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -274,86 +231,140 @@ export default function App() {
               </div>
             </div>
 
+            {activeTab === 'settings' && (
+              <SettingsPanel 
+                connection={connection} 
+                onConnect={handleConnect} 
+              />
+            )}
+
             {activeTab === 'history' && (
               <HistoryView />
             )}
 
             {activeTab === 'checkin' && (
-              <DailyCheckIn onSubmit={handleCheckIn} />
+              <DailyCheckIn onCheckIn={handleCheckIn} />
             )}
 
             {activeTab === 'sources' && (
-              <SourceManager parsedFiles={parsedFiles} />
+              <>
+                <SupabaseStatus 
+                  loading={supabaseLoading}
+                  error={supabaseError}
+                  latestSync={latestSyncImport}
+                  onRefresh={() => refreshSupabaseData(selectedDays)}
+                />
+                <SourceManager parsedFiles={parsedFiles} />
+                <SyncStatus imports={recentImports} />
+              </>
             )}
 
             {activeTab === 'upload' && (
-              <div className="space-y-8">
-                {parsedFiles.length > 0 && <Dashboard parsedFiles={parsedFiles} />}
+              <div className="space-y-6 animate-slide-up">
+                <UploadZone onFiles={handleFiles} parsing={parsing} parseLog={parseLog} />
                 
-                <UploadZone
-                  files={files}
-                  parsedFiles={parsedFiles}
-                  parsing={parsing}
-                  parseLog={parseLog}
-                  onFiles={handleFiles}
-                  onRemove={removeFile}
+                {parsedFiles.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between px-2">
+                      <h3 className="text-xs uppercase tracking-[0.35em] text-slate-ui">Ready for Analysis</h3>
+                      <button 
+                        onClick={() => {setFiles([]); setParsedFiles([]); setStage(STAGES.UPLOAD)}}
+                        className="text-[10px] text-slate-ui hover:text-crimson-health transition-colors"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {parsedFiles.map((file, i) => (
+                        <div key={i} className="group flex items-center justify-between rounded-xl border border-slate-border bg-ink-soft p-3 hover:border-jade/30 transition-all">
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            <span className="text-lg flex-shrink-0">
+                              {file.type === 'pdf' ? '📄' : file.type === 'csv' ? '📊' : file.type === 'zip' ? '📦' : file.type === 'db' ? '💾' : '📝'}
+                            </span>
+                            <div className="overflow-hidden">
+                              <p className="truncate text-sm font-medium text-white">{file.name}</p>
+                              <p className="text-[10px] uppercase tracking-wider text-slate-ui">{file.type} · {(file.size / 1024).toFixed(1)} KB</p>
+                            </div>
+                          </div>
+                          <button onClick={() => removeFile(i)} className="text-slate-ui opacity-0 group-hover:opacity-100 hover:text-crimson-health p-1 transition-all">
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Main Content Area */}
+          <div className="lg:col-span-8 space-y-8">
+            {stage === STAGES.SETUP && activeTab !== 'settings' && (
+              <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-border bg-ink-soft p-12 text-center animate-fade-in">
+                <div className="text-5xl mb-6">🛰️</div>
+                <h2 className="text-2xl font-display font-bold text-white mb-4">Welcome to HealthLens</h2>
+                <p className="text-slate-ui max-w-md mb-8">
+                  Connect an AI provider to start analysing your health data with evidence-grounded insights.
+                </p>
+                <button 
+                  onClick={() => setActiveTab('settings')}
+                  className="bg-jade hover:bg-jade-dark text-ink font-bold px-8 py-3 rounded-xl transition-all glow-active"
+                >
+                  Configure AI Provider
+                </button>
+              </div>
+            )}
+
+            {isSupabaseConfigured && (
+              <SupabaseDashboard 
+                summaries={supabaseSummaries} 
+                selectedDays={selectedDays}
+                onSelectDays={setSelectedDays}
+                onUseForAnalysis={handleUseSyncedDataForAnalysis}
+              />
+            )}
+
+            {stage === STAGES.UPLOAD && !isSupabaseConfigured && (
+              <Dashboard />
+            )}
+
+            {(stage === STAGES.ANALYSE || stage === STAGES.RESULT) && (
+              <div className="space-y-6 animate-slide-up">
+                <ModeSelector
+                  selected={selectedModes}
+                  onChange={setSelectedModes}
+                  onAnalyse={handleAnalyse}
+                  disabled={!parsedFiles.length || !connection}
+                  customQuestion={customQuestion}
+                  onCustomQuestionChange={setCustomQuestion}
                 />
-              </div>
-            )}
-            
-            {parsedFiles.length > 0 && activeTab === 'upload' && (
-              <ModeSelector
-                selected={selectedModes}
-                onChange={setSelectedModes}
-                onAnalyse={handleAnalyse}
-                disabled={!parsedFiles.length || !connection}
-                customQuestion={customQuestion}
-                onCustomQuestionChange={setCustomQuestion}
-              />
-            )}
-            {error && (
-              <div className="bg-crimson-glow border border-crimson-health/30 rounded-xl p-4 text-crimson-health text-sm">
-                {error}
+                
+                {error && (
+                  <div className="rounded-xl border border-crimson-health/20 bg-crimson-health/5 p-4 text-sm text-crimson-health">
+                    ⚠️ {error}
+                  </div>
+                )}
+
+                {(analysisResult || streaming) && (
+                  <AnalysisView 
+                    result={analysisResult} 
+                    streaming={streaming} 
+                  />
+                )}
+
+                {showChat && (
+                  <ChatPanel 
+                    history={chatHistory}
+                    onUpdateHistory={setChatHistory}
+                    dataContext={parsedFiles.map(f => f.summary).join('\n\n')}
+                    connection={connection}
+                  />
+                )}
               </div>
             )}
           </div>
-        )}
-
-        {/* Analysis result */}
-        {stage === STAGES.RESULT && (
-          <div className="animate-slide-up pt-6 space-y-6">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setStage(STAGES.ANALYSE)}
-                className="text-slate-ui hover:text-white text-sm flex items-center gap-1.5 transition-colors"
-              >
-                ← Back
-              </button>
-              <span className="text-slate-ui text-sm">
-                {parsedFiles.length} file{parsedFiles.length !== 1 ? 's' : ''} · {selectedModes.length} mode{selectedModes.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-
-            <AnalysisView result={analysisResult} streaming={streaming} />
-
-            {error && (
-              <div className="bg-crimson-glow border border-crimson-health/30 rounded-xl p-4 text-crimson-health text-sm">
-                {error}
-              </div>
-            )}
-
-            {showChat && (
-              <ChatPanel
-                apiKey={connection.apiKey}
-                provider={connection.provider}
-                model={connection.model}
-                history={chatHistory}
-                onHistoryUpdate={setChatHistory}
-                dataContext={dataContext}
-              />
-            )}
-          </div>
-        )}
+        </div>
       </main>
     </div>
   )

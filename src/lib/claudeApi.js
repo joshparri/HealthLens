@@ -1,54 +1,85 @@
-// Multi-provider AI integration: Anthropic, Groq, OpenRouter
 import { SOURCE_PRIORITY } from './schema.js'
 import { buildStructuredDataPack } from './dataPackBuilder.js'
 import { buildSupabaseDataPack, isSupabaseConfigured } from './healthDataApi.js'
 
 const ENDPOINTS = {
-  anthropic: 'https://api.anthropic.com/v1/messages',
   groq: 'https://api.groq.com/openai/v1/chat/completions',
   openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+  anthropic: 'https://api.anthropic.com/v1/messages'
 }
 
-const ANALYSIS_MODES = {
+export async function checkHealth(apiKey, provider, model) {
+  try {
+    const endpoint = ENDPOINTS[provider]
+    if (!endpoint) throw new Error(`Unsupported provider: ${provider}`)
+    
+    const isAnthropic = provider === 'anthropic'
+    const body = isAnthropic ? {
+      model: model || 'claude-3-5-sonnet-20240620',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'hi' }]
+    } : {
+      model: model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'anthropic/claude-3.5-sonnet'),
+      messages: [{ role: 'user', content: 'hi' }],
+      max_tokens: 1
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        ...(isAnthropic ? { 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } : {})
+      },
+      body: JSON.stringify(body)
+    })
+
+    return response.ok
+  } catch (e) {
+    return false
+  }
+}
+
+export const ANALYSIS_MODES = {
   quickSummary: {
     label: 'Quick Summary',
     icon: '⚡',
-    prompt: 'Give a clear, plain-English overview of this health data. Highlight the 3-5 most important findings. Be warm and honest. Use Australian English.'
+    prompt: 'Provide a concise summary of the last 7-14 days. Highlight the most significant change in sleep, activity, or recovery.'
   },
   deepPattern: {
     label: 'Deep Pattern Analysis',
-    icon: '🔬',
-    prompt: 'Perform a deep pattern analysis. Look for trends over time, correlations between metrics, anomalies, and boom-bust cycles. What stories does this data tell?'
+    icon: '🔍',
+    prompt: 'Look for hidden correlations. Does sleep quality impact the next day’s HRV? Does exercise volume correlate with resting HR? Be specific with dates and values.'
   },
   clinicalReview: {
-    label: 'Clinical Records',
+    label: 'Clinical Marker Review',
     icon: '🩺',
-    prompt: 'Review any pathology, blood test, or clinical records in this data. Summarise what each marker means in plain English, flag anything worth discussing with a GP, and note positive findings too. Remind the user this is not medical advice.'
+    prompt: 'Analyse blood test results and clinical biometrics (weight, BP, respiration). Compare them against standard reference ranges. Flag any markers that are trending towards the edges of normal ranges.'
   },
-  sleepAnalysis: {
-    label: 'Sleep Analysis',
+  sleepExpert: {
+    label: 'Sleep & Circadian',
     icon: '🌙',
-    prompt: 'Focus specifically on sleep data. Analyse duration, timing/consistency, quality indicators, and how sleep appears to affect next-day metrics. What patterns suggest good or poor sleep hygiene?'
+    prompt: 'Focus entirely on sleep cycles, efficiency, and timing. Look for consistency in wake times and sleep onset. Identify "good" vs "bad" sleep patterns.'
   },
-  movementBreakdown: {
-    label: 'Movement & Exercise',
+  movement: {
+    label: 'Movement & Load',
     icon: '🏃',
-    prompt: 'Break down movement and exercise data. What types of activity are present? How does activity load vary? Are there gaps (e.g. strength training)? How does this compare to Australian adult movement guidelines?'
+    prompt: 'Review exercise sessions and daily steps. Assess training load and recovery balance. Suggest if the user should push harder or take a rest day.'
   },
-  recoveryHRV: {
-    label: 'Recovery & HRV',
-    icon: '💓',
-    prompt: 'Analyse recovery signals including HRV, resting heart rate, respiratory rate, and any other recovery metrics. What is the overall recovery picture? Any concerning trends or reassuring signals?'
+  recovery: {
+    label: 'HRV & Recovery',
+    icon: '🔋',
+    prompt: 'Deep dive into HRV (RMSSD) and Resting Heart Rate. What are the recovery baselines? Are there signs of systemic stress or overtraining?'
   },
-  nutritionGaps: {
-    label: 'Nutrition Gaps',
+  nutrition: {
+    label: 'Nutrition & Metabolic',
     icon: '🥗',
-    prompt: 'Analyse any nutrition data present. If no direct intake data, look for indirect signals (weight trends, energy markers, bloodwork suggesting nutritional status). Flag any likely gaps for a dairy-free, plant-forward diet.'
+    prompt: 'If data is present, review calories, macros, and weight trends. How does nutrition timing or volume seem to affect energy or sleep?'
   },
   actionPlan: {
     label: '90-Day Action Plan',
-    icon: '🎯',
-    prompt: 'Based on all the data, generate a practical 90-day action plan. Keep it small and realistic — assume a real life with family, work, and ADHD. Prioritise the highest-yield changes. Format as clear weekly priorities.'
+    icon: '📅',
+    prompt: 'Based on all data, suggest 3 small, sustainable changes the user could make over the next 90 days. Focus on the "lowest hanging fruit" for health improvement.'
   },
   comparePeriods: {
     label: 'Compare Time Periods',
@@ -62,147 +93,76 @@ const ANALYSIS_MODES = {
   }
 }
 
-export { ANALYSIS_MODES }
+async function streamResponse({ apiKey, provider, model, systemPrompt, messages, onChunk }) {
+  const endpoint = ENDPOINTS[provider]
+  if (!endpoint) throw new Error(`Unsupported provider: ${provider}`)
 
-// ─── Internal streaming helpers ───────────────────────────────────────────────
+  const isAnthropic = provider === 'anthropic'
+  
+  const body = isAnthropic ? {
+    model: model || 'claude-3-5-sonnet-20240620',
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: messages,
+    stream: true
+  } : {
+    model: model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'anthropic/claude-3.5-sonnet'),
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages
+    ],
+    stream: true
+  }
 
-async function streamResponse({ provider, model, apiKey, systemPrompt, messages, onChunk, onComplete, onError }) {
-  try {
-    let response
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      ...(provider === 'openrouter' ? { 'HTTP-Referer': 'https://healthlens.app', 'X-Title': 'HealthLens' } : {}),
+      ...(isAnthropic ? { 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } : {})
+    },
+    body: JSON.stringify(body)
+  })
 
-    if (provider === 'anthropic') {
-      response = await fetch(ENDPOINTS.anthropic, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 4096,
-          stream: true,
-          system: systemPrompt,
-          messages,
-        }),
-      })
-    } else {
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      }
-      if (provider === 'openrouter') {
-        headers['HTTP-Referer'] = window.location.origin
-        headers['X-Title'] = 'HealthLens'
-      }
-      response = await fetch(ENDPOINTS[provider], {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model,
-          max_tokens: 4096,
-          stream: true,
-          messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        }),
-      })
-    }
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: { message: response.statusText } }))
+    throw new Error(err.error?.message || err.error || 'API request failed')
+  }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      const errorMessage = errorData.error?.message || errorData.message || `API error ${response.status}: ${response.statusText}`
-      throw new Error(`${provider} error: ${errorMessage}`)
-    }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let fullText = ''
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let fullText = ''
-    let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    const chunk = decoder.decode(value)
+    const lines = chunk.split('\n').filter(l => l.trim() !== '')
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop()
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || trimmed === 'data: [DONE]') continue
-        if (!trimmed.startsWith('data: ')) continue
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        if (data === '[DONE]') continue
         try {
-          const parsed = JSON.parse(trimmed.slice(6))
-          let chunk = ''
-          if (provider === 'anthropic') {
-            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-              chunk = parsed.delta.text
-            }
-          } else {
-            chunk = parsed.choices?.[0]?.delta?.content ?? ''
-          }
-          if (chunk) {
-            fullText += chunk
+          const json = JSON.parse(data)
+          const content = isAnthropic 
+            ? json.delta?.text || '' 
+            : json.choices?.[0]?.delta?.content || ''
+          
+          if (content) {
+            fullText += content
             onChunk(fullText)
           }
-        } catch {}
+        } catch (e) {
+          // Ignore parse errors for incomplete chunks
+        }
       }
     }
-
-    onComplete(fullText)
-  } catch (err) {
-    onError(err.message)
   }
-}
 
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-export async function checkHealth({ provider, model, apiKey }) {
-  try {
-    const systemPrompt = "Health check. Respond with 'OK'."
-    const messages = [{ role: 'user', content: 'Are you there?' }]
-    
-    let response
-    if (provider === 'anthropic') {
-      response = await fetch(ENDPOINTS.anthropic, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 10,
-          messages,
-          system: systemPrompt,
-        }),
-      })
-    } else {
-      response = await fetch(ENDPOINTS[provider], {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 10,
-          messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        }),
-      })
-    }
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      const errorMessage = errorData.error?.message || errorData.message || `API error ${response.status}`
-      return { ok: false, message: errorMessage }
-    }
-    return { ok: true }
-  } catch (err) {
-    return { ok: false, message: err.message }
-  }
+  return fullText
 }
 
 export async function runAnalysis({ apiKey, provider = 'anthropic', model = 'claude-opus-4-5', parsedFiles, selectedModes, customQuestion, onChunk, onComplete, onError }) {
@@ -219,40 +179,25 @@ export async function runAnalysis({ apiKey, provider = 'anthropic', model = 'cla
   }
 
   const modeInstructions = selectedModes
-    .map(m => ANALYSIS_MODES[m])
-    .filter(Boolean)
-    .map(m => `**${m.label}**: ${m.prompt}`)
+    .map(m => `### MODE: ${ANALYSIS_MODES[m].label}\n${ANALYSIS_MODES[m].prompt}`)
     .join('\n\n')
 
-  const systemPrompt = `You are a senior health data analyst. You are analysing a structured health-data extraction (Data Pack), not raw files.
+  const systemPrompt = `You are HealthLens AI, a clinical health data analyst. 
+You are grounded, evidence-based, and Australian-English speaking.
+You are talking to Josh, who is busy with work/family and has ADHD.
+Be direct, encouraging, and highly specific about data points.
 
-SOURCE PRIORITY RULES:
-${Object.entries(SOURCE_PRIORITY).map(([metric, sources]) => `- ${metric}: ${sources.join(' > ')}`).join('\n')}
+RULES:
+1. CITATION: Always cite the source file/date for any metric you mention.
+2. HONESTY: If data is missing or ambiguous, say so. Do not hallucinate.
+3. ADVICE: You are NOT a doctor. This is for reflection only.
+4. STRUCTURE: Use Markdown. Lead with a "Data Inventory" summary.
 
-IMPORTANT RULES:
-- Use Australia/Sydney timezone for date interpretation unless a file explicitly proves otherwise.
-- Use the SOURCE PRIORITY RULES above to decide which data to trust if multiple sources provide the same metric.
-- Do not invent data. If the Data Pack says a metric has 0 rows, it is empty.
-- Do not say a metric is missing if the Data Pack shows rows exist.
-- Every major claim must reference the extracted metric, date range, row count, or quality warning.
-- Warn when duplication or source overlap may distort totals (e.g. if multiple apps contribute to the same metric).
-- If a table exists with 0 rows, say "table exists but contains no records".
-- If a parser failed, say "parser limitation", not "data absent".
-- Use plain Australian English — warm, direct, never patronising.
-- This is NOT medical advice. Always suggest discussing findings with a GP.
-
-ANALYSIS FOCUS:
+ANALYSIS MODES REQUESTED:
 ${modeInstructions}
 
-${customQuestion ? `USER CUSTOM QUESTION: ${customQuestion}` : ''}
-
-RESPONSE STRUCTURE:
-1. **Data Inventory**: Summarise files, tables, metrics, date ranges, and row counts.
-2. **Data Quality Audit**: Highlight duplicates, source overlap, missing metrics, and confidence ratings.
-3. **True Summary**: What can safely be concluded vs what is uncertain.
-4. **Metric-by-Metric Analysis**: Detailed findings for Steps, Sleep, HRV, Resting HR, etc.
-5. **Pattern Lenses**: Insights on Recovery, Longevity, and ADHD/Regulation if applicable.
-6. **Next Experiments**: 1–3 tiny, practical experiments with success measures.`
+${customQuestion ? `CUSTOM USER QUESTION:\n${customQuestion}` : ''}
+`
 
   const userPrompt = `Please perform a deep clinical and pattern analysis on this Health Data Pack.
 
@@ -263,51 +208,33 @@ ${dataPack}
 
 Begin your structured analysis now. Lead with the Data Inventory.`
 
-  await streamResponse({
-    provider,
-    model,
-    apiKey,
-    systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
-    onChunk,
-    onComplete,
-    onError,
-  })
+  try {
+    const fullText = await streamResponse({
+      apiKey,
+      provider,
+      model,
+      systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+      onChunk
+    })
+    onComplete(fullText)
+  } catch (e) {
+    onError(e.message)
+  }
 }
 
-export async function runChat({ apiKey, provider = 'anthropic', model = 'claude-opus-4-5', history, userMessage, dataContext, onChunk, onComplete, onError }) {
-  const systemPrompt = `You are a warm, honest health data analyst helping someone understand their personal health data.
-
-Key rules:
-- Use plain Australian English
-- Not medical advice — always suggest GP for clinical concerns
-- Be warm, practical, and direct
-- The user has already uploaded health data (context provided)
-- Answer follow-up questions clearly and concisely`
-
-  const contextMessage = dataContext
-    ? `[HEALTH DATA CONTEXT]\n${dataContext.slice(0, 8000)}\n[END CONTEXT]\n\n`
-    : ''
-
-  const messages = [
-    ...(history.length === 0 && dataContext
-      ? [
-          { role: 'user', content: contextMessage + 'I have uploaded health data. Please be ready to answer questions about it.' },
-          { role: 'assistant', content: 'Got it — I have your health data loaded and ready. What would you like to explore?' }
-        ]
-      : []),
-    ...history,
-    { role: 'user', content: userMessage }
-  ]
-
-  await streamResponse({
-    provider,
-    model,
-    apiKey,
-    systemPrompt,
-    messages,
-    onChunk,
-    onComplete,
-    onError,
-  })
+export async function runChat({ apiKey, provider, model, systemPrompt, history, onChunk, onComplete, onError }) {
+  try {
+    const fullText = await streamResponse({
+      apiKey,
+      provider,
+      model,
+      systemPrompt,
+      messages: history,
+      onChunk
+    })
+    onComplete(fullText)
+  } catch (e) {
+    onError(e.message)
+  }
 }

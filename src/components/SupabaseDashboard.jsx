@@ -48,7 +48,7 @@ const ChartTooltip = ({ active, payload, label }) => {
   return null
 }
 
-export default function SupabaseDashboard({ summaries, selectedDays, onSelectDays }) {
+export default function SupabaseDashboard({ summaries, selectedDays, onSelectDays, onUseForAnalysis }) {
   const summary = useMemo(() => {
     if (!summaries || summaries.length === 0) return null
 
@@ -154,6 +154,15 @@ export default function SupabaseDashboard({ summaries, selectedDays, onSelectDay
               {days}d
             </button>
           ))}
+          {onUseForAnalysis && (
+            <button
+              type="button"
+              onClick={onUseForAnalysis}
+              className="rounded-full border border-jade/20 bg-jade/10 px-4 py-2 font-medium text-jade transition hover:bg-jade/15"
+            >
+              Analyse synced data
+            </button>
+          )}
         </div>
       </div>
 
