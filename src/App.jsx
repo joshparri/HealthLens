@@ -11,6 +11,7 @@ import Dashboard from './components/Dashboard.jsx'
 import SupabaseStatus from './components/SupabaseStatus.jsx'
 import SyncStatus from './components/SyncStatus.jsx'
 import SupabaseDashboard from './components/SupabaseDashboard.jsx'
+import SettingsPanel from './components/SettingsPanel.jsx'
 import { parseFile } from './lib/fileParser.js'
 import { runAnalysis } from './lib/claudeApi.js'
 import { isSupabaseConfigured, getDailySummaries, getLatestSyncStatus, getSyncImports, getMetricAvailability } from './lib/healthDataApi.js'
@@ -42,7 +43,7 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState([])
   const [showChat, setShowChat] = useState(false)
   const [showCheckIn, setShowCheckIn] = useState(false)
-  const [activeTab, setActiveTab] = useState('upload') // upload, sources, checkin
+  const [activeTab, setActiveTab] = useState('upload') // upload, sources, checkin, settings
 
   const [supabaseLoading, setSupabaseLoading] = useState(false)
   const [supabaseError, setSupabaseError] = useState('')
@@ -268,7 +269,7 @@ export default function App() {
           <div className="animate-slide-up pt-8 space-y-6">
             <div className="flex items-center justify-between border-b border-slate-border/50 pb-2">
               <div className="flex gap-4">
-                {['upload', 'sources', 'checkin'].map(tab => (
+                {['upload', 'sources', 'checkin', 'settings'].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -290,6 +291,10 @@ export default function App() {
 
             {activeTab === 'sources' && (
               <SourceManager parsedFiles={parsedFiles} />
+            )}
+
+            {activeTab === 'settings' && (
+              <SettingsPanel onClearSession={handleReset} onClearProviderKeys={handleDisconnect} />
             )}
 
             {activeTab === 'upload' && (
