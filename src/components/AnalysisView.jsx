@@ -6,12 +6,41 @@ export default function AnalysisView({ result, streaming }) {
     navigator.clipboard.writeText(result).catch(() => {})
   }
 
-  const handleDownload = () => {
-    const blob = new Blob([result], { type: 'text/markdown' })
+  const handleDownload = (type = 'md') => {
+    let blob, filename
+    if (type === 'md') {
+      blob = new Blob([result], { type: 'text/markdown' })
+      filename = `health-analysis-${new Date().toISOString().split('T')[0]}.md`
+    } else {
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>HealthLens Analysis</title>
+          <style>
+            body { font-family: -apple-system, system-ui, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 20px; color: #1e293b; }
+            h1, h2, h3 { color: #0f172a; }
+            code { background: #f1f5f9; padding: 2px 4px; rounded: 4px; }
+            blockquote { border-left: 4px solid #e2e8f0; margin-left: 0; padding-left: 20px; color: #64748b; }
+            .disclaimer { background: #fffbeb; border: 1px solid #fef3c7; padding: 16px; border-radius: 12px; font-size: 0.875rem; color: #92400e; margin-top: 40px; }
+          </style>
+        </head>
+        <body>
+          ${result.replace(/\n/g, '<br/>')}
+          <div class="disclaimer">
+            ⚕️ This analysis is for personal reflection only — not medical advice. Please discuss any clinical findings, symptoms, or concerns with your GP or a qualified health professional.
+          </div>
+        </body>
+        </html>
+      `
+      blob = new Blob([html], { type: 'text/html' })
+      filename = `health-analysis-${new Date().toISOString().split('T')[0]}.html`
+    }
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `health-analysis-${new Date().toISOString().split('T')[0]}.md`
+    a.download = filename
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -41,12 +70,20 @@ export default function AnalysisView({ result, streaming }) {
             >
               Copy
             </button>
-            <button
-              onClick={handleDownload}
-              className="text-xs text-slate-ui hover:text-white border border-slate-border hover:border-jade/40 px-2.5 py-1 rounded-lg transition-all"
-            >
-              Download .md
-            </button>
+            <div className="flex rounded-lg overflow-hidden border border-slate-border">
+              <button
+                onClick={() => handleDownload('md')}
+                className="text-xs text-slate-ui hover:text-white border-r border-slate-border hover:bg-white/5 px-2.5 py-1 transition-all"
+              >
+                .MD
+              </button>
+              <button
+                onClick={() => handleDownload('html')}
+                className="text-xs text-slate-ui hover:text-white hover:bg-white/5 px-2.5 py-1 transition-all"
+              >
+                .HTML
+              </button>
+            </div>
           </div>
         )}
       </div>

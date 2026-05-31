@@ -52,6 +52,11 @@ const ANALYSIS_MODES = {
     label: 'Compare Time Periods',
     icon: '📊',
     prompt: 'Compare health metrics across different time periods in the data. Look for what has improved, what has stayed flat, and what may have declined. Frame improvements as encouragement.'
+  },
+  gpSummary: {
+    label: 'GP Summary Report',
+    icon: '🏥',
+    prompt: 'Generate a concise summary specifically for a GP discussion. Focus on clinical documents, pathology markers, symptoms, and significant wearable trends. Separate user-reported symptoms from measured biometrics. Include a section for "Questions to ask my GP". Keep it professional and factual.'
   }
 }
 
