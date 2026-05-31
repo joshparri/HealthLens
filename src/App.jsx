@@ -239,8 +239,14 @@ export default function App() {
 
             {activeTab === 'settings' && (
               <SettingsPanel 
-                connection={connection} 
-                onConnect={handleConnect} 
+                connection={connection}
+                onConnect={handleConnect}
+                onClearSession={() => {
+                  setFiles([])
+                  setParsedFiles([])
+                  setStage(STAGES.UPLOAD)
+                }}
+                onClearProviderKeys={() => setConnection(null)}
               />
             )}
 

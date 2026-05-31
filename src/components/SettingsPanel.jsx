@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import db from '../lib/db.js'
+import ProviderSelector from './ProviderSelector.jsx'
 
 const PROVIDERS = ['groq', 'openrouter', 'anthropic']
 
-export default function SettingsPanel({ onClearSession, onClearProviderKeys }) {
+export default function SettingsPanel({ connection, onConnect, onClearSession, onClearProviderKeys }) {
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -72,6 +73,25 @@ export default function SettingsPanel({ onClearSession, onClearProviderKeys }) {
           <span className="block text-sm font-semibold text-white">Clear provider keys</span>
           <span className="mt-2 block text-xs leading-5 text-slate-ui">Removes Groq, OpenRouter, and Anthropic keys from localStorage.</span>
         </button>
+      </div>
+
+      {connection ? (
+        <div className="rounded-xl border border-jade/20 bg-jade/10 p-4 text-sm text-jade">
+          Connected provider: <span className="font-semibold text-white">{connection.provider}</span>, model: <span className="font-semibold text-white">{connection.model}</span>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-slate-border bg-ink p-4 text-xs leading-5 text-slate-ui">
+          No AI provider configured yet. Use the form below to connect Groq, OpenRouter, or Anthropic.
+        </div>
+      )}
+
+      <div className="pt-4">
+        <ProviderSelector
+          onSubmit={(conn) => {
+            onConnect?.(conn)
+            setStatus(`Connected ${conn.provider} successfully.`)
+          }}
+        />
       </div>
 
       <div className="rounded-xl border border-slate-border bg-ink p-4 text-xs leading-5 text-slate-ui">
