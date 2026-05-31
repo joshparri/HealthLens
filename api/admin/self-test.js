@@ -93,6 +93,20 @@ export default async function handler(req, res) {
         return res.status(404).json({ ...result, error: 'No matching import found', warnings: ['No matching fake import found for cleanup'] })
       }
 
+      const allowedTestImport = (row) => {
+        const hash = String(row.device_id_hash || '').toLowerCase()
+        return row.source === 'self_test' || row.sync_type === 'self_test' || /^test[_-]|^self-test[_-]/i.test(hash)
+      }
+
+      const unsafeImport = importsToDelete.find((row) => !allowedTestImport(row))
+      if (unsafeImport) {
+        return res.status(403).json({
+          ...result,
+          error: 'Cleanup only allowed for explicit test imports or test device IDs',
+          warnings: ['Attempted cleanup of a non-test import was blocked'],
+        })
+      }
+
       const importIds = importsToDelete.map(row => row.id)
       result.checks.queryImport = true
 

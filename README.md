@@ -22,6 +22,45 @@ A personal health data analysis app powered by Claude AI. Upload wearable export
 5. Output directory: `dist`
 6. Deploy — done.
 
+### Environment variables for Supabase
+
+To enable the live Supabase dashboard, configure these Vercel environment variables:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SUPABASE_ANON_KEY`
+- `HEALTHLENS_SYNC_SECRET` (for secure sync and admin cleanup)
+
+## Supabase live dashboard
+
+The app now reads real synced data from Supabase and includes a Sync Status/ dashboard section for `daily_health_summary`.
+
+If no synced health rows exist, it shows:
+
+> “No synced health data yet. Use Android HealthLens Sync or manual upload.”
+
+## Admin endpoint safety
+
+The admin endpoint at `/api/admin/self-test` is retained for safe system checks and cleanup only.
+It requires bearer auth via `HEALTHLENS_SYNC_SECRET`, does not expose secrets, and only deletes explicit test imports with a safe `test` or `self-test` device ID.
+
+## Android scaffold
+
+A minimal Android scaffold lives in `android/HealthLensSync` with a manual `Sync now` placeholder, Health Connect permission planning, and a default endpoint.
+
+## Fake sync test
+
+Run the built-in fake sync test script locally with the environment variables set:
+
+```bash
+HEALTHLENS_SYNC_SECRET=your_secret_here npm run fake-sync
+```
+
+To clean up the test rows, use:
+
+```bash
+HEALTHLENS_SYNC_SECRET=your_secret_here npm run fake-sync -- --delete-test-data
+```
+
 ## Deploy on GitHub Pages
 
 ```bash

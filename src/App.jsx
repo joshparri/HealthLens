@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import UploadZone from './components/UploadZone.jsx'
 import ModeSelector from './components/ModeSelector.jsx'
 import AnalysisView from './components/AnalysisView.jsx'
@@ -8,8 +8,12 @@ import Header from './components/Header.jsx'
 import DailyCheckIn from './components/DailyCheckIn.jsx'
 import SourceManager from './components/SourceManager.jsx'
 import Dashboard from './components/Dashboard.jsx'
+import SupabaseStatus from './components/SupabaseStatus.jsx'
+import SyncStatus from './components/SyncStatus.jsx'
+import SupabaseDashboard from './components/SupabaseDashboard.jsx'
 import { parseFile } from './lib/fileParser.js'
 import { runAnalysis } from './lib/claudeApi.js'
+import { isSupabaseConfigured, getDailySummaries, getLatestSyncStatus, getSyncImports, getMetricAvailability } from './lib/healthDataApi.js'
 
 const STAGES = { SETUP: 'setup', UPLOAD: 'upload', ANALYSE: 'analyse', RESULT: 'result' }
 
@@ -38,6 +42,48 @@ export default function App() {
   const [showChat, setShowChat] = useState(false)
   const [showCheckIn, setShowCheckIn] = useState(false)
   const [activeTab, setActiveTab] = useState('upload') // upload, sources, checkin
+
+  const [supabaseLoading, setSupabaseLoading] = useState(false)
+  const [supabaseError, setSupabaseError] = useState('')
+  const [supabaseSummaries, setSupabaseSummaries] = useState([])
+  const [latestSyncImport, setLatestSyncImport] = useState(null)
+  const [recentImports, setRecentImports] = useState([])
+  const [metricAvailability, setMetricAvailability] = useState(null)
+  const [selectedDays, setSelectedDays] = useState(7)
+
+  const refreshSupabaseData = useCallback(async (days = selectedDays) => {
+    if (!isSupabaseConfigured) return
+    setSupabaseLoading(true)
+    setSupabaseError('')
+
+    try {
+      const [summariesResult, latestImportResult, importsResult, availabilityResult] = await Promise.all([
+        getDailySummaries({ days }),
+        getLatestSyncStatus(),
+        getSyncImports(),
+        getMetricAvailability({ days }),
+      ])
+
+      if (summariesResult.error) throw summariesResult.error
+      if (latestImportResult.error) throw latestImportResult.error
+      if (importsResult.error) throw importsResult.error
+      if (availabilityResult.error) throw availabilityResult.error
+
+      setSupabaseSummaries(summariesResult.data ?? [])
+      setLatestSyncImport(latestImportResult.data ?? null)
+      setRecentImports(importsResult.data ?? [])
+      setMetricAvailability(availabilityResult.data ?? null)
+    } catch (err) {
+      setSupabaseError(err?.message || String(err))
+    } finally {
+      setSupabaseLoading(false)
+    }
+  }, [selectedDays])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return
+    refreshSupabaseData(selectedDays)
+  }, [refreshSupabaseData, selectedDays])
 
   const handleConnect = useCallback((conn) => {
     setConnection(conn)
@@ -157,6 +203,24 @@ export default function App() {
       />
 
       <main className="max-w-5xl mx-auto px-4 pb-24">
+        {isSupabaseConfigured && (
+          <div className="animate-slide-up pt-8 space-y-6">
+            <SupabaseStatus
+              configured={isSupabaseConfigured}
+              loading={supabaseLoading}
+              error={supabaseError}
+              latestImport={latestSyncImport}
+              summariesCount={supabaseSummaries.length}
+              onRefresh={() => refreshSupabaseData(selectedDays)}
+            />
+
+            <div className="grid gap-6 xl:grid-cols-[minmax(280px,360px)_1fr]">
+              <SyncStatus latestImport={latestSyncImport} recentImports={recentImports} loading={supabaseLoading} />
+              <SupabaseDashboard summaries={supabaseSummaries} selectedDays={selectedDays} onSelectDays={setSelectedDays} />
+            </div>
+          </div>
+        )}
+
         {/* Provider setup */}
         {stage === STAGES.SETUP && (
           <div className="animate-slide-up">

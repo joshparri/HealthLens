@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "test": "node --test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "fake-sync": "node --input-type=module scripts/send-fake-health-connect-sync.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
