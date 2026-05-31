@@ -9,7 +9,7 @@ const ENDPOINTS = {
   anthropic: 'https://api.anthropic.com/v1/messages'
 }
 
-export async function checkHealth(apiKey, provider, model) {
+export async function checkHealth({ apiKey, provider, model }) {
   try {
     const endpoint = ENDPOINTS[provider]
     if (!endpoint) throw new Error(`Unsupported provider: ${provider}`)
@@ -35,9 +35,23 @@ export async function checkHealth(apiKey, provider, model) {
       body: JSON.stringify(body)
     })
 
-    return response.ok
+    if (response.ok) {
+      return { ok: true, message: 'Connection successful.' }
+    }
+
+    let errorBody = { error: { message: response.statusText } }
+    try {
+      errorBody = await response.json()
+    } catch (parseError) {
+      // ignore parse error
+    }
+
+    return {
+      ok: false,
+      message: errorBody.error?.message || errorBody.message || `API request failed with status ${response.status}`
+    }
   } catch (e) {
-    return false
+    return { ok: false, message: e.message || 'Network error' }
   }
 }
 
