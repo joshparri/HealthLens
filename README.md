@@ -1,6 +1,6 @@
-# Josh Health Analyser
+# HealthLens
 
-A personal health data analysis app powered by Claude AI. Upload wearable exports, pathology reports, and health CSVs for deep AI-powered insights.
+A personal health data analysis app powered by Groq, OpenRouter, or Anthropic. Upload wearable exports, pathology reports, and health CSVs for evidence-grounded personal health insights.
 
 > ⚕️ **Not medical advice** — for personal reflection only.
 
@@ -8,10 +8,32 @@ A personal health data analysis app powered by Claude AI. Upload wearable export
 
 - **Upload anything**: CSV, PDF, JSON, ZIP archives, SQLite .db (Health Connect), plain text
 - **9 analysis modes**: Quick summary, deep patterns, clinical review, sleep, movement, HRV/recovery, nutrition, 90-day action plan, period comparison
-- **Streaming AI analysis** via Claude claude-opus-4-5
+- **Streaming AI analysis** via Groq, OpenRouter, or Anthropic
 - **Follow-up chat**: Ask questions about your data after analysis
-- **Download results** as markdown
+- **Download results** as Markdown, JSON evidence bundle, or print/PDF
 - **API key stored locally** — never leaves your browser
+
+## One-command automation check
+
+Run the HealthLens doctor whenever you want AI to check the boring plumbing:
+
+```bash
+npm run doctor
+```
+
+It runs tests/build, checks the live app, verifies the sync endpoint auth boundary, and tests provider keys if these env vars are present:
+
+- `GROQ_API_KEY`
+- `OPENROUTER_API_KEY`
+- `ANTHROPIC_API_KEY`
+
+To also send and clean up one fake production sync row:
+
+```bash
+HEALTHLENS_SYNC_SECRET=your_secret_here npm run doctor -- --sync --cleanup
+```
+
+The script never prints secret values.
 
 ## Deploy on Vercel (recommended)
 
@@ -43,9 +65,9 @@ If no synced health rows exist, it shows:
 The admin endpoint at `/api/admin/self-test` is retained for safe system checks and cleanup only.
 It requires bearer auth via `HEALTHLENS_SYNC_SECRET`, does not expose secrets, and only deletes explicit test imports with a safe `test` or `self-test` device ID.
 
-## Android scaffold
+## Android sync app
 
-A minimal Android scaffold lives in `android/HealthLensSync` with a manual `Sync now` placeholder, Health Connect permission planning, and a default endpoint.
+A minimal Android app lives in `android/HealthLensSync`. It can send a manual fake daily summary to the production sync endpoint. Real Health Connect reads are the next automation step.
 
 ## Fake sync test
 
@@ -84,7 +106,7 @@ Then open http://localhost:5173
 
 ## How to use
 
-1. Enter your [Anthropic API key](https://console.anthropic.com/settings/keys)
+1. Connect Groq, OpenRouter, or Anthropic
 2. Upload health data files
 3. Select analysis modes
 4. Click Analyse
@@ -105,20 +127,19 @@ Then open http://localhost:5173
 
 - React 18 + Vite
 - Tailwind CSS
-- Anthropic Claude API (streaming)
+- Groq/OpenRouter/Anthropic AI providers
 - sql.js (SQLite in-browser)
 - JSZip (ZIP parsing)
 - pdfjs-dist (PDF text extraction)
 - react-dropzone
 - react-markdown
-- Recharts (ready for chart extensions)
 
 ## Privacy
 
 - All file parsing happens in your browser
-- Only extracted text summaries are sent to Anthropic's API
+- Only extracted Data Packs are sent to the AI provider you choose
 - API key stored in localStorage — clear browser data to remove it
-- No backend, no tracking, no data storage
+- Local imports can be cleared from Settings
 
 ## Automation: GitHub Actions
 

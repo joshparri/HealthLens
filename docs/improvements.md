@@ -52,6 +52,7 @@ Current progress
 - Completed analyses now export Markdown, structured JSON evidence bundles, and browser print/save-as-PDF output.
 - Android scaffold can now send a manual fake daily summary payload to the production sync endpoint for on-device pipe testing.
 - In-app settings now include local session/import clearing and provider-key clearing.
+- `npm run doctor` now automates local test/build, live app checks, provider checks when keys are present, and optional fake production sync/cleanup.
 
 Next steps
 - Add admin self-test positive-path tests with a mocked Supabase admin client.

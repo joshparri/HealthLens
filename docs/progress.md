@@ -49,6 +49,8 @@ The active milestone is the dependable MVP loop:
   - browser print/save-as-PDF path
 - Upgraded the Android scaffold from a dead placeholder to a manual test sender that posts one Android-style daily summary payload to the sync endpoint.
 - Added in-app privacy/settings controls to clear the current upload session, IndexedDB imports, and browser-stored AI provider keys.
+- Added `npm run doctor` as a one-command automation check for tests, build, live app, sync endpoint auth boundary, optional provider health checks, and optional fake production sync/cleanup.
+- Removed the unused Recharts dependency after replacing dashboard trends with lightweight SVG charts.
 
 ## Still To Do
 
@@ -58,6 +60,7 @@ The active milestone is the dependable MVP loop:
 - Add a proper Reports page for saved Markdown/JSON/PDF output history.
 - Replace Android manual test payloads with real Health Connect aggregate reads.
 - Add Supabase server-side deletion/export controls if remote data management becomes necessary.
+- Add `HEALTHLENS_SYNC_SECRET` to a secure automation runner if we want unattended production fake-sync checks.
 - Run the fake sync script against production when `HEALTHLENS_SYNC_SECRET` is available locally.
 - Build real Android Health Connect reads instead of the current placeholder button.
 - Add charts for synced steps, sleep, HRV, resting HR, respiratory rate, weight, and exercise minutes.
