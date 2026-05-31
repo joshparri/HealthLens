@@ -1,4 +1,5 @@
 import { SOURCE_PRIORITY } from './schema.js'
+import { importHealthConnectFile } from './healthConnectImporter.js'
 
 export async function parseFile(file, onProgress) {
   const ext = file.name.split('.').pop().toLowerCase()
@@ -231,6 +232,29 @@ async function parseZIP(file, log) {
     const dirs = fileList.filter(f => zip.files[f].dir).length
     const fileCount = fileList.length - dirs
     log(`Archive opened — ${fileCount} files in ${dirs} folders`, 'info', 38)
+
+    // Detect embedded SQLite DBs (Health Connect exports often include health_connect_export.db)
+    const dbCandidates = fileList.filter(f => f.toLowerCase().endsWith('.db') || f.toLowerCase().includes('health_connect'))
+    for (const candidate of dbCandidates) {
+      try {
+        const lower = candidate.toLowerCase()
+        if (lower.includes('health_connect') || lower.endsWith('.db')) {
+          log(`Found embedded DB: ${candidate} — extracting for Health Connect import`, 'info', 50)
+          try {
+            const arrayBuf = await zip.files[candidate].async('arraybuffer')
+            const dbFile = new File([arrayBuf], candidate.split('/').pop(), { type: 'application/octet-stream' })
+            // Best-effort import — run in background and report progress
+            importHealthConnectFile(dbFile, (msg) => log(`[importer] ${msg}`, 'info'))
+            output += `\n=== Embedded DB: ${candidate} queued for Health Connect import ===\n`
+          } catch (e) {
+            log(`Could not extract embedded DB ${candidate}: ${e.message}`, 'warn')
+            output += `\n=== Embedded DB: ${candidate} could not be extracted ===\n`
+          }
+        }
+      } catch (e) {
+        // ignore detection errors
+      }
+    }
 
     let output = `ZIP FILE: ${file.name}\nContents:\n`
     output += fileList.map(f => `  ${f}`).join('\n') + '\n\n'
