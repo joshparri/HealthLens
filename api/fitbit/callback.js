@@ -1,4 +1,5 @@
 import fetch from 'node-fetch'
+import supabaseAdmin from '../lib/supabaseServer.js'
 
 export default async function handler(req, res) {
   const { FITBIT_CLIENT_ID, FITBIT_CLIENT_SECRET, BASE_URL } = process.env
@@ -33,8 +34,27 @@ export default async function handler(req, res) {
       body: params.toString()
     })
     const data = await r.json()
-    // WARNING: This response contains tokens. Persist securely in your server-side DB.
-    res.status(200).json({ message: 'Fitbit token exchange successful (do not store tokens in the repo)', token: data })
+    // Persist tokens into Supabase oauth_tokens table (server-side)
+    try {
+      const user_id = process.env.DEFAULT_USER_ID || 'local-user'
+      const accountId = data.user_id || null
+      const insertRow = {
+        user_id,
+        provider: 'fitbit',
+        account_id: accountId,
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        expires_at: data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : null,
+        scope: data.scope || null,
+        raw_response: data
+      }
+      const { error: upsertErr } = await supabaseAdmin.from('oauth_tokens').upsert(insertRow, { onConflict: ['provider', 'account_id', 'user_id'] })
+      if (upsertErr) console.warn('Failed to persist Fitbit token:', upsertErr.message)
+    } catch (e) {
+      console.warn('Supabase persist error', e.message)
+    }
+
+    res.status(200).json({ message: 'Fitbit token exchange successful (tokens persisted server-side if Supabase configured)', token: data })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
