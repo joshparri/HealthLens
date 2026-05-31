@@ -24,6 +24,10 @@ export default async function handler(req, res) {
     const err = validatePayload(body)
     if (err) return res.status(400).json({ error: err })
 
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Server misconfigured: missing Supabase service role or URL' })
+    }
+
     // Prevent huge payloads
     if (body.dailySummaries.length > 1000) return res.status(400).json({ error: 'dailySummaries too large' })
 
