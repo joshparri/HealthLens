@@ -32,10 +32,15 @@ The active milestone is the dependable MVP loop:
 - Added prompt-size budgeting so large health files are truncated deliberately rather than causing vague provider failures.
 - Updated provider model lists for currently available Groq/OpenRouter options checked during this pass.
 - Added focused tests for prompt/data-pack truncation.
+- Hardened the Health Connect sync endpoint positive path:
+  - exported an injectable handler for tests
+  - added mocked success/idempotency/cleanup tests
+  - preserved legitimate zero values such as 0 steps or 0 sleep minutes
+  - cleaned up the import row if summary insertion fails
 
 ## Still To Do
 
-- Add successful sync endpoint tests with a mocked Supabase admin client.
+- Add admin self-test positive-path tests with a mocked Supabase admin client.
 - Add dashboard tests for empty Supabase data and fake synced data.
 - Run the fake sync script against production when `HEALTHLENS_SYNC_SECRET` is available locally.
 - Build real Android Health Connect reads instead of the current placeholder button.

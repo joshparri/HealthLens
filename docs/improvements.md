@@ -46,9 +46,9 @@ This document lists 10 actionable improvements to HealthLens, with suggested nex
 Current progress
 - SQLite parsing now runs through a worker and produces an evidence-grounded Data Pack instead of raw sample rows.
 - Provider errors now include the actual HTTP status/message and practical hints.
-- Supabase sync/dashboard plumbing exists; the next reliability task is mocked positive-path tests plus production fake-sync verification.
+- Supabase sync/dashboard plumbing exists; sync endpoint positive-path tests now cover success, idempotency, zero values, and summary-insert cleanup.
 
 Next steps
-- Add successful sync endpoint tests with a mocked Supabase admin client.
+- Add admin self-test positive-path tests with a mocked Supabase admin client.
 - Add dashboard tests for empty and fake Supabase data.
 - Build the real Android Health Connect reader after the web sync loop is proven.
