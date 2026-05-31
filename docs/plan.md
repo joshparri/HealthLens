@@ -412,7 +412,7 @@ Recent additions:
 - [x] Add Daily Context Tags / Check-in form (Phase 1/2)
 - [x] Add Supabase-backed dashboard and Sync Status (Phase 5/6)
 - [x] Secure admin endpoints and add fake sync test script (Phase 7)
-- [x] Create Android Health Connect sync scaffold and reading logic (Phase 6)
+- [x] Create Android Health Connect sync app with real reading and POST logic (Phase 6)
 - [x] Implement Recharts trend visualization for steps, HRV, RHR, Weight, and Sleep (Phase 5)
 - [x] Add HTML/Markdown export options and GP Summary mode (Phase 6)
 - [x] Implement Deterministic Analysis with Structured Data Packs (Phase 8)
@@ -431,19 +431,20 @@ Deliverables:
 7. [x] Import UI with warnings and import history.
 8. [x] Dashboard showing real imported data.
 9. [x] README explaining how Josh can feed new data weekly.
-10. [x] A backlog section for Fitbit API, Withings API and Android companion app.
+10. [x] Android Health Connect sync app (Reads real biometrics and POSTs to API).
 
-## Backlog & Future Roadmap
+## Completed Roadmap
 
 ### **High Priority**
-- **Persistence Layer**: Move from in-memory state to `indexedDB` to keep health data across browser refreshes.
-- **Deduplication Engine**: Implement a background worker to merge overlapping records from different sources based on the priority rules in `schema.js`.
-- **Advanced PDF Parsing**: Implement more robust regex-based extraction for common pathology lab formats (e.g., Laverty, Sonic, etc.).
+- **Persistence Layer**: [x] Move from in-memory state to `indexedDB` to keep health data across browser refreshes.
+- **Deduplication Engine**: [x] Implement a background worker to merge overlapping records from different sources based on the priority rules in `schema.js`.
+- **Advanced PDF Parsing**: [x] Implement more robust regex-based extraction for common pathology lab formats (e.g., Laverty, Sonic, etc.).
+- **Android Companion App**: [x] Build a lightweight Kotlin app to read Health Connect and push daily summaries to the HealthLens API.
 
 ### **Medium Priority**
-- **Fitbit Web API Integration**: Allow direct OAuth connection to Fitbit for real-time daily sync.
-- **Withings Web API Integration**: Direct connection for Sleep Mat and Scale data.
-- **Android Companion App**: Build a lightweight Kotlin/Java app to read Health Connect and push daily summaries to the HealthLens API.
+- **Fitbit Web API Integration**: [ ] Allow direct OAuth connection to Fitbit for real-time daily sync.
+- **Withings Web API Integration**: [ ] Direct connection for Sleep Mat and Scale data.
+- **Synced AI Analysis**: [x] LLM receives both manual uploads and live synced records for consistent analysis.
 
 ### **Low Priority**
 - **Spotify Correlation**: Automated extraction of listening data to correlate with stress/energy scores.

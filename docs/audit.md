@@ -563,13 +563,13 @@ But the health analysis is not yet trustworthy, because the app previously misse
 The next concrete win is:
 
 ```text
-Fake sync row appears in Supabase-backed dashboard.
+Fake sync row appears in Supabase-backed dashboard. (DONE)
 ```
 
 After that:
 
 ```text
-Android Health Connect sync sends real daily data automatically.
+Android Health Connect sync sends real daily data automatically. (DONE - App reads real biometrics and POSTs to Vercel)
 ```
 
 That is the path from prototype to something genuinely useful.
