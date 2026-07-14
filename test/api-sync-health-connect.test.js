@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert'
 
 process.env.HEALTHLENS_SYNC_SECRET = 'test-secret'
-const { default: handler, createSyncHandler, buildSummaryRow } = await import('../api/sync/health-connect.js')
+const { default: handler, createSyncHandler, buildSummaryRow } = await import('../src/apiHandlers/sync-health-connect.js')
 
 function createResponse() {
   const res = { statusCode: 200, body: null }

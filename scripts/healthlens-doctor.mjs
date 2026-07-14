@@ -16,9 +16,8 @@ function record(name, ok, detail = '') {
 
 function run(command, commandArgs) {
   const result = spawnSync(command, commandArgs, {
-    stdio: 'pipe',
+    stdio: 'inherit',
     shell: process.platform === 'win32',
-    encoding: 'utf8',
   })
   return { ok: result.status === 0, status: result.status }
 }

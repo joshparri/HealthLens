@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert'
 
 process.env.HEALTHLENS_SYNC_SECRET = 'test-secret'
-const { default: handler, createAdminSelfTestHandler } = await import('../api/admin/self-test.js')
+const { default: handler, createAdminSelfTestHandler } = await import('../src/apiHandlers/admin-self-test.js')
 
 function createResponse() {
   const res = { statusCode: 200, body: null }

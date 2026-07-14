@@ -1,11 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert'
-import { createStravaWebhookHandler } from '../api/strava/webhook.js'
+import { createStravaWebhookHandler } from '../src/apiHandlers/strava-webhook.js'
 import {
   markStravaActivityDeleted,
   mapStravaActivityToRows,
   upsertStravaActivityToSupabase,
-} from '../api/lib/stravaClient.js'
+} from '../src/apiLib/stravaClient.js'
 
 function createResponse() {
   const res = { statusCode: 200, body: null }
